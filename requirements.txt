@@ -1,0 +1,47 @@
+# LyricMatch Requirements - Windows Compatible
+# Install with: pip install -r requirements.txt
+
+# Core Dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Audio Processing
+librosa>=0.10.0
+pydub>=0.25.0
+soundfile>=0.12.0
+audioread>=3.0.0
+ffmpeg-python>=0.2.0
+
+# Speech Recognition
+openai-whisper
+SpeechRecognition>=3.10.0
+
+# PyTorch (CPU version for Windows)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchaudio
+
+# Natural Language Processing (using latest versions with pre-built wheels)
+scikit-learn>=1.3.0
+sentence-transformers>=2.2.0
+nltk>=3.8
+fuzzywuzzy[speedup]>=0.18.0
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Utilities
+python-dotenv>=1.0.0
+pyyaml>=6.0
+tqdm>=4.66.0
+requests>=2.31.0
+
+# Optional: Streamlit for quick UI
+streamlit>=1.29.0
+
+# Development Tools (optional - comment out if not needed)
+pytest>=7.4.0
+jupyter>=1.0.0
+ipykernel>=6.27.0
