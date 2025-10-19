@@ -114,11 +114,9 @@ def demo_audio_samples():
     print("🎵 AUDIO SAMPLES CHECK")
     print("="*60 + "\n")
     
-    audio_dir = Config.AUDIO_SAMPLES_DIR
-    
-    audio_files = []
-    for ext in Config.SUPPORTED_FORMATS:
-        audio_files.extend(audio_dir.glob(f"*{ext}"))
+    from utils.audio_utils import AudioManager
+    manager = AudioManager()
+    audio_files = manager.get_audio_files()
     
     if audio_files:
         print(f"✅ Found {len(audio_files)} audio file(s):")
@@ -130,10 +128,10 @@ def demo_audio_samples():
         print(f"\n💡 Test with: python main.py {audio_files[0]}")
         return True
     else:
-        print(f"⚠️  No audio files found in: {audio_dir}")
+        print(f"⚠️  No audio files found in: {Config.AUDIO_SAMPLES_DIR}")
         print(f"\n📝 To test the full pipeline:")
-        print(f"   1. Add audio files to: {audio_dir}")
-        print(f"   2. Run: python test_transcription.py")
+        print(f"   1. Add audio files to: {Config.AUDIO_SAMPLES_DIR}")
+        print(f"   2. Or run: python -m utils.audio_utils download_sample_audio")
         print(f"   3. Run: python main.py <audio_file>")
         return False
 

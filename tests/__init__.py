@@ -5,10 +5,14 @@ Run this to ensure all components are working
 import sys
 from pathlib import Path
 
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
 def test_imports():
     """Test if all required libraries are installed"""
     print("\n" + "="*60)
-    print("🔍 Testing Library Imports")
+    print("📦 Testing Library Imports")
     print("="*60 + "\n")
     
     libraries = {
@@ -21,16 +25,17 @@ def test_imports():
         'pandas': 'Pandas',
         'numpy': 'NumPy',
         'fastapi': 'FastAPI',
-        'nltk': 'NLTK'
+        'nltk': 'NLTK',
+        'sentence_transformers': 'Sentence-Transformers'
     }
     
     failed = []
     for lib, name in libraries.items():
         try:
             __import__(lib)
-            print(f"✅ {name:20s} - OK")
+            print(f"✅ {name:25s} - OK")
         except ImportError:
-            print(f"❌ {name:20s} - FAILED")
+            print(f"❌ {name:25s} - FAILED")
             failed.append(name)
     
     if failed:
@@ -54,10 +59,12 @@ def test_config():
         print(f"💾 Database path: {Config.DB_PATH}")
         print(f"🎤 Whisper model: {Config.WHISPER_MODEL}")
         print(f"🔍 Similarity threshold: {Config.SIMILARITY_THRESHOLD}")
+        print(f"🧠 Matching engine: {Config.MATCHING_ENGINE}")
+        print(f"📊 SBERT model: {Config.SBERT_MODEL}")
         
         # Check if directories exist
         if Config.DATA_DIR.exists():
-            print(f"\n✅ Directory structure created")
+            print(f"\n✅ Directory structure exists")
         else:
             print(f"\n⚠️  Creating directories...")
             Config.create_directories()
@@ -100,7 +107,7 @@ def test_transcriber():
         import torch
         
         print(f"🔧 PyTorch device: {'CUDA' if torch.cuda.is_available() else 'CPU'}")
-        print(f"🔄 Loading Whisper model (this may take a moment)...\n")
+        print(f"📥 Loading Whisper model (this may take a moment)...\n")
         
         transcriber = Transcriber(model_name="tiny")  # Use tiny for quick test
         print(f"\n✅ Transcriber initialized with model: {transcriber.model_name}")
@@ -181,10 +188,10 @@ def main():
     
     if passed == total:
         print("🎉 All tests passed! LyricMatch is ready to use.")
-        print("\n📝 Next steps:")
+        print("\n📋 Next steps:")
         print("   1. Add some test audio files to: data/audio_samples/")
-        print("   2. Prepare a lyrics database")
-        print("   3. Run the complete pipeline")
+        print("   2. Prepare a lyrics database: python setup_database.py")
+        print("   3. Run the complete pipeline: python main.py <audio_file>")
     else:
         print("⚠️  Some tests failed. Please check the errors above.")
         return 1

@@ -2,10 +2,14 @@
 Comprehensive comparison between TF-IDF and Neural Embeddings matching
 Shows accuracy improvements and performance metrics
 """
-import time
+import sys
 from pathlib import Path
-import pandas as pd
+import time
 
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import pandas as pd
 from config import Config
 from src.matcher import LyricsMatcher  # TF-IDF matcher
 from src.neural_matcher import NeuralLyricsMatcher  # Neural matcher

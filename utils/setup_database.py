@@ -2,9 +2,15 @@
 Setup script to initialize the lyrics database from CSV files
 Run this once to process your CSV files
 """
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import from root
+parent_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(parent_dir))
+
 from src.database import LyricsDatabase
 from config import Config
-from pathlib import Path
 
 
 def main():

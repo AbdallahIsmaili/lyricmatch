@@ -1,7 +1,12 @@
 """
 Test transcription on sample audio files
 """
+import sys
 from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from src.transcriber import Transcriber
 from src.audio_processor import AudioProcessor
 from config import Config
@@ -22,20 +27,27 @@ def test_transcription():
     
     if not audio_files:
         print(f"⚠️  No audio files found in: {audio_dir}")
-        print("\n📝 To test transcription:")
+        print("\n📋 To test transcription:")
         print(f"   1. Place audio files in: {audio_dir}")
         print("   2. Supported formats: " + ", ".join(Config.SUPPORTED_FORMATS))
         print("   3. Run this script again")
         return
     
-    print(f"📂 Found {len(audio_files)} audio file(s):\n")
+    print(f"📂 Found {len(audio_files)} audio file(s)")
+    
+    # Limit to first 3 files for testing
+    test_files = audio_files[:3]
+    if len(audio_files) > 3:
+        print(f"   Testing first 3 files only\n")
+    else:
+        print()
     
     # Initialize components
     audio_processor = AudioProcessor()
     transcriber = Transcriber(model_name="base")
     
     # Process each file
-    for i, audio_file in enumerate(audio_files, 1):
+    for i, audio_file in enumerate(test_files, 1):
         print("="*60)
         print(f"[{i}/{len(audio_files)}] {audio_file.name}")
         print("="*60)

@@ -195,10 +195,20 @@ npm run build
 python -c "from config import Config; Config.create_directories()"
 
 # Place your lyrics CSV files in data/raw/csv/
-# Each CSV should have columns: Artist, Title, Album, Year, Date, Lyric
 
-# Initialize database
-python setup_database.py
+# Initialize database using the utils version
+python -m utils.setup_database
+
+# Download audio samples
+python -m utils.audio_utils download_sample_audio
+
+# Rename audio files (interactive)
+python -m utils.audio_utils rename_audio_cli
+
+# Or use programmatically
+from utils.audio_utils import AudioManager
+manager = AudioManager()
+manager.download_youtube_audio(["https://youtube.com/..."])
 ```
 
 ### Environment Variables
