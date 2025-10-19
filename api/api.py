@@ -42,7 +42,7 @@ CORS(app)
 # Configuration
 UPLOAD_FOLDER = Path(tempfile.gettempdir()) / 'lyricmatch_uploads'
 UPLOAD_FOLDER.mkdir(exist_ok=True)
-ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.flac', '.ogg'}
+ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.flac', '.ogg', '.webm'}  
 
 # Global state for processing jobs
 processing_jobs = {}
@@ -230,6 +230,7 @@ def get_tiers():
         'tiers': TIER_CONFIGS
     })
 
+
 @app.route('/api/upload', methods=['POST'])
 def upload_audio():
     """Upload audio file with tier configuration"""
@@ -280,10 +281,19 @@ def upload_audio():
             'error': f'File size exceeds {tier_config["max_file_size"] / (1024*1024):.1f}MB limit for {tier} tier'
         }), 413
     
-    # Check file extension
+    # Check file extension - support both explicit extensions and content type
     file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in ALLOWED_EXTENSIONS:
-        return jsonify({'error': f'Unsupported format: {file_ext}'}), 400
+    
+    # Handle browser recordings that might not have proper extension
+    if not file_ext or file_ext not in ALLOWED_EXTENSIONS:
+        # Check content type for webm
+        if file.content_type and 'webm' in file.content_type:
+            file_ext = '.webm'
+        elif file.content_type and 'audio' in file.content_type:
+            # Accept generic audio types
+            file_ext = '.webm'  # Default to webm for browser recordings
+        else:
+            return jsonify({'error': f'Unsupported format: {file_ext or file.content_type}'}), 400
     
     # Save file
     job_id = str(uuid.uuid4())
@@ -294,6 +304,31 @@ def upload_audio():
     print(f"\n📤 New upload: {file.filename}")
     print(f"🆔 Job ID: {job_id}")
     print(f"🎯 Tier: {tier}")
+    print(f"📁 Format: {file_ext}")
+    
+    # Convert WebM to WAV for processing
+    if file_ext == '.webm':
+        try:
+            from pydub import AudioSegment
+            
+            print(f"🔄 Converting WebM to WAV...")
+            audio = AudioSegment.from_file(str(filepath), format="webm")
+            new_filepath = filepath.with_suffix('.wav')
+            audio.export(str(new_filepath), format="wav")
+            
+            # Remove original webm
+            os.remove(str(filepath))
+            filepath = new_filepath
+            
+            print(f"✅ Converted WebM to WAV: {new_filepath.name}")
+        except Exception as e:
+            print(f"⚠️ WebM conversion failed: {e}")
+            # Clean up and return error
+            try:
+                os.remove(str(filepath))
+            except:
+                pass
+            return jsonify({'error': f'Failed to process WebM audio: {str(e)}'}), 500
     
     # Initialize job
     processing_jobs[job_id] = {
@@ -325,6 +360,7 @@ def upload_audio():
         'message': 'Processing started',
         'tier': tier
     })
+
 
 @app.route('/api/status/<job_id>', methods=['GET'])
 def get_status(job_id):

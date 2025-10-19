@@ -37,11 +37,14 @@ class AudioProcessor:
             if not audio_path.exists():
                 raise FileNotFoundError(f"Audio file not found: {audio_path}")
             
+            # Add .webm to supported formats check
+            supported_formats = set(Config.SUPPORTED_FORMATS) | {'.webm'}
+            
             # Check file format
-            if audio_path.suffix.lower() not in Config.SUPPORTED_FORMATS:
+            if audio_path.suffix.lower() not in supported_formats:
                 raise ValueError(f"Unsupported audio format: {audio_path.suffix}")
             
-            # Load audio
+            # Load audio (librosa handles webm if ffmpeg is installed)
             audio, sr = librosa.load(
                 audio_path,
                 sr=self.sample_rate,
@@ -56,6 +59,8 @@ class AudioProcessor:
             
         except Exception as e:
             raise Exception(f"Error loading audio: {str(e)}")
+    
+
     
     def reduce_noise(self, audio, sr):
         """

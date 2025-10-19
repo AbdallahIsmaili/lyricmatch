@@ -621,6 +621,7 @@ const WaveformVisualizer = ({ isActive }) => {
 
 const HistoryModal = ({ isOpen, onClose, onSelectItem }) => {
   const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
@@ -629,8 +630,16 @@ const HistoryModal = ({ isOpen, onClose, onSelectItem }) => {
   }, [isOpen]);
 
   const loadHistory = async () => {
-    const items = await getHistory(20);
-    setHistory(items);
+    setLoading(true);
+    try {
+      const items = await getHistory(20);
+      console.log('Loaded history items:', items.length); // Debug
+      setHistory(items);
+    } catch (error) {
+      console.error('Error loading history:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleClearHistory = async () => {
@@ -640,78 +649,124 @@ const HistoryModal = ({ isOpen, onClose, onSelectItem }) => {
     }
   };
 
+  const formatDate = (timestamp) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-2xl max-w-3xl w-full max-h-[80vh] overflow-hidden shadow-2xl">
-        <div className="p-6 border-b border-[var(--border)] flex items-center justify-between">
+        <div className="p-6 border-b border-[var(--border)] flex items-center justify-between bg-gradient-to-r from-[var(--bg-secondary)] to-transparent">
           <div className="flex items-center gap-3">
             <History className="w-6 h-6 text-[var(--text-primary)]" />
             <h2 className="text-2xl font-bold text-[var(--text-primary)]">Search History</h2>
+            <div className="px-3 py-1 bg-[var(--bg-tertiary)] rounded-full text-sm font-bold text-[var(--text-secondary)]">
+              {history.length}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {history.length > 0 && (
               <button
                 onClick={handleClearHistory}
-                className="px-4 py-2 text-sm bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors font-semibold"
               >
                 Clear All
               </button>
             )}
-            <button onClick={onClose} className="px-4 py-2 text-sm bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-lg transition-colors">
-              Close
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-[var(--text-primary)]" />
             </button>
           </div>
         </div>
 
         <div className="overflow-y-auto max-h-[60vh] p-6">
-          {history.length === 0 ? (
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="w-12 h-12 text-[var(--text-secondary)] animate-spin mb-4" />
+              <p className="text-[var(--text-secondary)]">Loading history...</p>
+            </div>
+          ) : history.length === 0 ? (
             <div className="text-center py-12 text-[var(--text-secondary)]">
               <History className="w-16 h-16 mx-auto mb-4 opacity-30" />
-              <p className="text-lg">No search history yet</p>
+              <p className="text-lg font-semibold mb-2">No search history yet</p>
+              <p className="text-sm">Your searches will appear here</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {history.map((item) => (
+              {history.map((item, index) => (
                 <div
                   key={item.id}
-                  className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 hover:bg-[var(--bg-tertiary)] transition-colors cursor-pointer"
+                  className="group bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 hover:bg-[var(--bg-tertiary)] hover:border-[var(--accent)]/50 transition-all cursor-pointer"
                   onClick={() => {
                     onSelectItem(item);
                     onClose();
                   }}
                 >
-                  <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
-                      <h3 className="font-bold text-[var(--text-primary)] text-lg">
-                        {item.topMatch?.title || 'Unknown'}
-                      </h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-[var(--text-primary)] text-lg">
+                          {item.topMatch?.title || 'Unknown'}
+                        </h3>
+                        <TierBadge tier={item.tier || 'free'} />
+                      </div>
                       <p className="text-[var(--text-secondary)]">
                         {item.topMatch?.artist || 'Unknown Artist'}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-[var(--text-primary)]">
-                        {Math.round((item.topMatch?.final_score || 0) * 100)}%
+                    <div className="text-right flex-shrink-0 ml-4">
+                      <div className="inline-flex items-center gap-1 px-3 py-1 bg-green-500/10 border border-green-500/30 rounded-full mb-1">
+                        <Trophy className="w-4 h-4 text-green-500" />
+                        <span className="text-lg font-bold text-green-500">
+                          {Math.round((item.topMatch?.final_score || 0) * 100)}%
+                        </span>
                       </div>
-                      <div className="text-xs text-[var(--text-secondary)]">
-                        {new Date(item.timestamp).toLocaleDateString()}
+                      <div className="text-xs text-[var(--text-tertiary)]">
+                        {formatDate(item.timestamp)}
                       </div>
                     </div>
                   </div>
-                  <div className="text-sm text-[var(--text-secondary)] font-mono">
-                    {item.filename}
+                  
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="px-2 py-1 bg-[var(--bg-tertiary)] rounded text-[var(--text-secondary)] font-mono">
+                      {item.filename || 'Unknown file'}
+                    </div>
+                    {item.config?.engine && (
+                      <div className="px-2 py-1 bg-blue-500/10 border border-blue-500/30 rounded text-blue-500 font-semibold uppercase">
+                        {item.config.engine}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           )}
         </div>
+
+        <div className="p-4 border-t border-[var(--border)] bg-[var(--bg-secondary)] text-center text-sm text-[var(--text-tertiary)]">
+          History is stored locally in your browser
+        </div>
       </div>
     </div>
   );
 };
+
 
 // Header Component
 const Header = ({ currentTier, onChangeTier }) => {
@@ -769,9 +824,10 @@ const Header = ({ currentTier, onChangeTier }) => {
   );
 };
 
-// Upload View Component
+
 const UploadView = ({ onUpload, currentTier, onOpenConfig }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [activeTab, setActiveTab] = useState('upload'); // 'upload' or 'record'
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -802,7 +858,7 @@ const UploadView = ({ onUpload, currentTier, onOpenConfig }) => {
             Identify Your Song
           </h2>
           <p className="text-xl text-[var(--text-secondary)] max-w-2xl mx-auto mb-6">
-            Upload an audio file to discover the song through advanced lyrics recognition technology
+            Upload an audio file or record directly to discover the song through advanced lyrics recognition
           </p>
           <button
             onClick={onOpenConfig}
@@ -813,42 +869,73 @@ const UploadView = ({ onUpload, currentTier, onOpenConfig }) => {
           </button>
         </div>
 
-        <div
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-          className={`relative border-2 border-dashed rounded-2xl p-16 transition-all duration-300 ${
-            isDragging 
-              ? 'border-[var(--accent)] bg-[var(--accent)]/10 scale-[1.02]' 
-              : 'border-[var(--border)] bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] hover:border-[var(--accent)]/50'
-          }`}
-        >
-          <div className="flex flex-col items-center gap-6">
-            <div className="relative">
-              <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center border border-[var(--border)] shadow-2xl">
-                <Upload className="w-14 h-14 text-white" />
-              </div>
-              <div className="absolute -top-2 -right-2 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg">
-                <Sparkles className="w-3 h-3 text-black" />
-              </div>
-            </div>
-            
-            <div className="text-center">
-              <p className="text-2xl font-semibold text-[var(--text-primary)] mb-2">Drop your audio file here</p>
-              <p className="text-[var(--text-secondary)] text-lg mb-1">or click to browse</p>
-              <p className="text-sm text-[var(--text-tertiary)] mt-4 font-mono">
-                MP3 • WAV • M4A • FLAC • OGG
-              </p>
-            </div>
-
-            <input
-              type="file"
-              accept="audio/*"
-              onChange={handleFileInput}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            />
-          </div>
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6 bg-[var(--bg-secondary)] p-2 rounded-xl border border-[var(--border)]">
+          <button
+            onClick={() => setActiveTab('upload')}
+            className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+              activeTab === 'upload'
+                ? 'bg-[var(--accent)] text-[var(--bg-primary)] shadow-lg'
+                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+            }`}
+          >
+            <Upload className="w-5 h-5" />
+            Upload File
+          </button>
+          <button
+            onClick={() => setActiveTab('record')}
+            className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+              activeTab === 'record'
+                ? 'bg-[var(--accent)] text-[var(--bg-primary)] shadow-lg'
+                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+            }`}
+          >
+            <Activity className="w-5 h-5" />
+            Record Audio
+          </button>
         </div>
+
+        {/* Content */}
+        {activeTab === 'upload' ? (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            className={`relative border-2 border-dashed rounded-2xl p-16 transition-all duration-300 ${
+              isDragging 
+                ? 'border-[var(--accent)] bg-[var(--accent)]/10 scale-[1.02]' 
+                : 'border-[var(--border)] bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] hover:border-[var(--accent)]/50'
+            }`}
+          >
+            <div className="flex flex-col items-center gap-6">
+              <div className="relative">
+                <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center border border-[var(--border)] shadow-2xl">
+                  <Upload className="w-14 h-14 text-white" />
+                </div>
+                <div className="absolute -top-2 -right-2 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg">
+                  <Sparkles className="w-3 h-3 text-black" />
+                </div>
+              </div>
+              
+              <div className="text-center">
+                <p className="text-2xl font-semibold text-[var(--text-primary)] mb-2">Drop your audio file here</p>
+                <p className="text-[var(--text-secondary)] text-lg mb-1">or click to browse</p>
+                <p className="text-sm text-[var(--text-tertiary)] mt-4 font-mono">
+                  MP3 • WAV • M4A • FLAC • OGG • WEBM
+                </p>
+              </div>
+
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={handleFileInput}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+            </div>
+          </div>
+        ) : (
+          <AudioRecorder onRecordingComplete={onUpload} currentTier={currentTier} />
+        )}
 
         <div className="mt-12 grid grid-cols-3 gap-6">
           <div className="group bg-[var(--bg-secondary)] rounded-xl p-6 border border-[var(--border)] hover:border-[var(--accent)]/50 transition-all">
@@ -868,6 +955,253 @@ const UploadView = ({ onUpload, currentTier, onOpenConfig }) => {
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+const AudioRecorder = ({ onRecordingComplete, currentTier }) => {
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [audioLevel, setAudioLevel] = useState(0);
+  
+  const mediaRecorderRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+  const animationRef = useRef(null);
+
+  const maxDuration = currentTier === 'premium' ? 120 : 30; // seconds
+
+  useEffect(() => {
+    return () => {
+      stopRecording();
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, []);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+
+      // Setup audio analysis
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      source.connect(analyserRef.current);
+      analyserRef.current.fftSize = 256;
+
+      // Start visualization
+      visualizeAudio();
+
+      mediaRecorderRef.current = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+
+      chunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const file = new File([blob], `recording-${Date.now()}.webm`, { type: 'audio/webm' });
+        onRecordingComplete(file);
+        
+        // Cleanup
+        stream.getTracks().forEach(track => track.stop());
+        if (audioContextRef.current) {
+          audioContextRef.current.close();
+        }
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      setDuration(0);
+
+      // Start timer
+      timerRef.current = setInterval(() => {
+        setDuration(prev => {
+          const newDuration = prev + 1;
+          if (newDuration >= maxDuration) {
+            stopRecording();
+            return maxDuration;
+          }
+          return newDuration;
+        });
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      alert('Could not access microphone. Please grant permission and try again.');
+    }
+  };
+
+  const visualizeAudio = () => {
+    if (!analyserRef.current) return;
+
+    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+    
+    const animate = () => {
+      analyserRef.current.getByteFrequencyData(dataArray);
+      const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+      setAudioLevel(average / 255);
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      setIsPaused(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    }
+  };
+
+  const pauseRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      if (isPaused) {
+        mediaRecorderRef.current.resume();
+        timerRef.current = setInterval(() => {
+          setDuration(prev => {
+            const newDuration = prev + 1;
+            if (newDuration >= maxDuration) {
+              stopRecording();
+              return maxDuration;
+            }
+            return newDuration;
+          });
+        }, 1000);
+      } else {
+        mediaRecorderRef.current.pause();
+        clearInterval(timerRef.current);
+      }
+      setIsPaused(!isPaused);
+    }
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="bg-[var(--bg-secondary)] rounded-2xl p-8 border border-[var(--border)]">
+      <div className="text-center mb-6">
+        <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-full mb-4">
+          <Activity className="w-4 h-4 text-red-500" />
+          <span className="text-sm font-semibold text-red-500">
+            {isRecording ? (isPaused ? 'Recording Paused' : 'Recording...') : 'Ready to Record'}
+          </span>
+        </div>
+        <h3 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
+          Record Audio
+        </h3>
+        <p className="text-[var(--text-secondary)]">
+          Max duration: {maxDuration}s {currentTier === 'free' && '(Upgrade for 120s)'}
+        </p>
+      </div>
+
+      {/* Waveform Visualization */}
+      {isRecording && (
+        <div className="mb-6 h-32 bg-[var(--bg-tertiary)] rounded-xl flex items-center justify-center overflow-hidden relative">
+          <div className="absolute inset-0 flex items-center justify-center gap-1">
+            {[...Array(50)].map((_, i) => (
+              <div
+                key={i}
+                className="w-1 bg-gradient-to-t from-red-500 to-orange-500 rounded-full transition-all duration-100"
+                style={{
+                  height: `${Math.random() * audioLevel * 100 + 20}%`,
+                  opacity: isPaused ? 0.3 : 1
+                }}
+              />
+            ))}
+          </div>
+          {isPaused && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="text-white text-xl font-bold">PAUSED</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Timer Display */}
+      <div className="mb-6 text-center">
+        <div className="text-5xl font-mono font-bold text-[var(--text-primary)] mb-2">
+          {formatTime(duration)}
+        </div>
+        <div className="h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-gradient-to-r from-red-500 to-orange-500 transition-all duration-300"
+            style={{ width: `${(duration / maxDuration) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="flex items-center justify-center gap-4">
+        {!isRecording ? (
+          <button
+            onClick={startRecording}
+            className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white font-bold rounded-xl shadow-lg transition-all"
+          >
+            <div className="w-6 h-6 rounded-full bg-white" />
+            Start Recording
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={pauseRecording}
+              className="flex items-center gap-2 px-6 py-4 bg-[var(--bg-tertiary)] hover:bg-[var(--accent)]/10 text-[var(--text-primary)] font-semibold rounded-xl transition-all"
+            >
+              {isPaused ? (
+                <>
+                  <div className="w-0 h-0 border-l-8 border-l-[var(--text-primary)] border-y-6 border-y-transparent" />
+                  Resume
+                </>
+              ) : (
+                <>
+                  <div className="flex gap-1">
+                    <div className="w-2 h-6 bg-[var(--text-primary)] rounded" />
+                    <div className="w-2 h-6 bg-[var(--text-primary)] rounded" />
+                  </div>
+                  Pause
+                </>
+              )}
+            </button>
+            <button
+              onClick={stopRecording}
+              className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold rounded-xl shadow-lg transition-all"
+            >
+              <div className="w-6 h-6 bg-white rounded" />
+              Stop & Analyze
+            </button>
+          </>
+        )}
+      </div>
+
+      {currentTier === 'free' && (
+        <div className="mt-6 text-center text-sm text-[var(--text-secondary)]">
+          <Crown className="w-4 h-4 inline mr-1 text-yellow-500" />
+          Upgrade to Premium for 120s recordings
+        </div>
+      )}
     </div>
   );
 };
@@ -994,11 +1328,14 @@ const ResultsView = ({ results, onReset, tier, config }) => {
     setLoading(true);
     try {
       // Fetch Spotify and YouTube data
-      const spotify = await fetchSpotifyTrack(topMatch.artist, topMatch.title);
-      const youtube = await fetchYouTubeVideo(topMatch.artist, topMatch.title);
+      const [spotifyResponse, youtubeResponse] = await Promise.all([
+        fetchSpotifyTrack(topMatch.artist, topMatch.title),
+        fetchYouTubeVideo(topMatch.artist, topMatch.title)
+      ]);
       
-      setSpotifyData(spotify);
-      setYoutubeData(youtube);
+      console.log('Spotify response:', spotifyResponse); // Debug
+      setSpotifyData(spotifyResponse);
+      setYoutubeData(youtubeResponse);
     } catch (error) {
       console.error('Error fetching music data:', error);
     } finally {
@@ -1108,6 +1445,7 @@ const ResultsView = ({ results, onReset, tier, config }) => {
                   loading={loading}
                   artist={topMatch.artist}
                   title={topMatch.title}
+                  previewUrl={spotifyData?.preview_url}
                 />
                 <StreamingButton
                   platform="youtube"
@@ -1115,6 +1453,7 @@ const ResultsView = ({ results, onReset, tier, config }) => {
                   loading={loading}
                   artist={topMatch.artist}
                   title={topMatch.title}
+                  previewUrl={null}
                 />
               </div>
             </div>
@@ -1184,8 +1523,33 @@ const ResultsView = ({ results, onReset, tier, config }) => {
   );
 };
 
-// Streaming Button Component
-const StreamingButton = ({ platform, url, loading, artist, title }) => {
+
+const StreamingButton = ({ platform, url, loading, artist, title, previewUrl }) => {
+  const [showPlayer, setShowPlayer] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(err => {
+        console.error('Play failed:', err);
+      });
+    }
+    setIsPlaying(!isPlaying);
+  };
+
   const searchQuery = encodeURIComponent(`${artist} ${title}`);
   const fallbackUrl = platform === 'spotify' 
     ? `https://open.spotify.com/search/${searchQuery}`
@@ -1199,7 +1563,8 @@ const StreamingButton = ({ platform, url, loading, artist, title }) => {
         </svg>
       ),
       gradient: 'from-green-600 to-green-700 hover:from-green-500 hover:to-green-600',
-      name: 'Play on Spotify'
+      name: 'Play on Spotify',
+      hasPreview: previewUrl && platform === 'spotify'
     },
     youtube: {
       icon: (
@@ -1208,38 +1573,80 @@ const StreamingButton = ({ platform, url, loading, artist, title }) => {
         </svg>
       ),
       gradient: 'from-red-600 to-red-700 hover:from-red-500 hover:to-red-600',
-      name: 'Watch on YouTube'
+      name: 'Watch on YouTube',
+      hasPreview: false
     }
   };
 
-  const { icon, gradient, name } = config[platform];
+  const { icon, gradient, name, hasPreview } = config[platform];
 
   return (
-    <a
-      href={url || fallbackUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`flex items-center justify-between px-6 py-4 bg-gradient-to-r ${gradient} rounded-xl text-white font-bold transition-all shadow-lg hover:shadow-xl group ${
-        loading ? 'opacity-50 pointer-events-none' : ''
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        {icon}
-        <span className="text-lg">{name}</span>
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        {/* Preview Button (Spotify only) */}
+        {hasPreview && previewUrl && (
+          <button
+            onClick={togglePlay}
+            className={`flex items-center justify-center px-6 py-4 bg-gradient-to-r ${gradient} rounded-xl text-white font-bold transition-all shadow-lg hover:shadow-xl group flex-shrink-0`}
+            title={isPlaying ? 'Pause preview' : 'Play 30s preview'}
+          >
+            {isPlaying ? (
+              <div className="flex gap-1">
+                <div className="w-1 h-6 bg-white rounded animate-pulse" />
+                <div className="w-1 h-6 bg-white rounded animate-pulse" style={{ animationDelay: '0.2s' }} />
+              </div>
+            ) : (
+              <div className="w-0 h-0 border-l-8 border-l-white border-y-6 border-y-transparent ml-1" />
+            )}
+          </button>
+        )}
+
+        {/* Main Link Button */}
+        <a
+          href={url || fallbackUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`flex-1 flex items-center justify-between px-6 py-4 bg-gradient-to-r ${gradient} rounded-xl text-white font-bold transition-all shadow-lg hover:shadow-xl group ${
+            loading ? 'opacity-50 pointer-events-none' : ''
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            {icon}
+            <span className="text-lg">{name}</span>
+          </div>
+          {loading ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <span className="text-2xl group-hover:translate-x-1 transition-transform">→</span>
+          )}
+        </a>
       </div>
-      {loading ? (
-        <Loader2 className="w-5 h-5 animate-spin" />
-      ) : (
-        <span className="text-2xl group-hover:translate-x-1 transition-transform">→</span>
+
+      {/* Audio Player */}
+      {hasPreview && previewUrl && (
+        <div className="bg-[var(--bg-tertiary)] rounded-lg p-4 border border-[var(--border)]">
+          <audio
+            ref={audioRef}
+            src={previewUrl}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnded={() => setIsPlaying(false)}
+            className="w-full"
+            controls
+          />
+          <p className="text-xs text-[var(--text-tertiary)] text-center mt-2">
+            30-second preview from Spotify
+          </p>
+        </div>
       )}
-    </a>
+    </div>
   );
 };
+
 
 // Fetch Spotify Track - Add this helper function
 const fetchSpotifyTrack = async (artist, title) => {
   try {
-    // This would call your backend API endpoint that handles Spotify API
     const response = await fetch(`http://localhost:5000/api/spotify/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1247,7 +1654,9 @@ const fetchSpotifyTrack = async (artist, title) => {
     });
     
     if (response.ok) {
-      return await response.json();
+      const data = await response.json();
+      console.log('Spotify data:', data);
+      return data; 
     }
   } catch (error) {
     console.error('Spotify fetch error:', error);
@@ -1277,93 +1686,184 @@ const fetchYouTubeVideo = async (artist, title) => {
 
 
 const LyricsMatchDisplay = ({ queryText, songLyrics, matchPercentage }) => {
-  const [segments, setSegments] = useState([]);
+  const [highlightedLyrics, setHighlightedLyrics] = useState([]);
+  const [matchingSegments, setMatchingSegments] = useState([]);
 
   useEffect(() => {
-    findMatchingSegments();
+    if (queryText && songLyrics) {
+      findAndHighlightMatches();
+    }
   }, [queryText, songLyrics]);
 
-  const findMatchingSegments = () => {
-    if (!queryText || !songLyrics) return;
-
-    const queryWords = queryText.toLowerCase().split(/\s+/);
+  const findAndHighlightMatches = () => {
+    const queryWords = queryText.toLowerCase().split(/\s+/).filter(w => w.length > 2);
     const lyricWords = songLyrics.toLowerCase().split(/\s+/);
+    const originalWords = songLyrics.split(/\s+/);
     
-    // Find matching word sequences
-    const matches = [];
-    for (let i = 0; i < lyricWords.length; i++) {
-      let matchLength = 0;
-      for (let j = 0; j < queryWords.length && i + j < lyricWords.length; j++) {
-        if (queryWords[j] === lyricWords[i + j]) {
-          matchLength++;
-        } else if (matchLength > 0) {
-          break;
+    // Create a map of which words match
+    const matchMap = lyricWords.map((word, idx) => {
+      const cleanWord = word.replace(/[^\w]/g, '');
+      return queryWords.some(qw => {
+        const cleanQw = qw.replace(/[^\w]/g, '');
+        return cleanWord === cleanQw || 
+               cleanWord.includes(cleanQw) || 
+               cleanQw.includes(cleanWord);
+      });
+    });
+
+    // Find consecutive matching segments
+    const segments = [];
+    let currentSegment = null;
+    
+    for (let i = 0; i < matchMap.length; i++) {
+      if (matchMap[i]) {
+        if (!currentSegment) {
+          currentSegment = { start: i, end: i, words: [originalWords[i]] };
+        } else {
+          currentSegment.end = i;
+          currentSegment.words.push(originalWords[i]);
         }
-      }
-      
-      if (matchLength >= 2) { // At least 2 consecutive words
-        matches.push({
-          start: i,
-          length: matchLength,
-          text: lyricWords.slice(i, i + matchLength).join(' ')
-        });
-        i += matchLength - 1; // Skip matched words
+      } else {
+        if (currentSegment && currentSegment.words.length >= 2) {
+          segments.push({
+            ...currentSegment,
+            text: currentSegment.words.join(' ')
+          });
+        }
+        currentSegment = null;
       }
     }
     
-    setSegments(matches);
+    // Add last segment if exists
+    if (currentSegment && currentSegment.words.length >= 2) {
+      segments.push({
+        ...currentSegment,
+        text: currentSegment.words.join(' ')
+      });
+    }
+
+    // Create highlighted lyrics display
+    const highlighted = [];
+    let lastIdx = 0;
+    
+    segments.forEach(segment => {
+      // Add non-matching text before segment
+      if (segment.start > lastIdx) {
+        highlighted.push({
+          text: originalWords.slice(lastIdx, segment.start).join(' '),
+          isMatch: false
+        });
+      }
+      
+      // Add matching segment
+      highlighted.push({
+        text: segment.text,
+        isMatch: true
+      });
+      
+      lastIdx = segment.end + 1;
+    });
+    
+    // Add remaining text
+    if (lastIdx < originalWords.length) {
+      highlighted.push({
+        text: originalWords.slice(lastIdx).join(' '),
+        isMatch: false
+      });
+    }
+
+    setHighlightedLyrics(highlighted);
+    setMatchingSegments(segments.slice(0, 5)); // Top 5 segments
   };
 
   return (
     <div className="bg-[var(--bg-secondary)] rounded-2xl p-6 border border-[var(--border)]">
-      <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-        <Sparkles className="w-5 h-5" />
-        Matching Segments
-      </h3>
-      
-      {segments.length > 0 ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex-1 bg-[var(--bg-tertiary)] rounded-full h-2">
-              <div 
-                className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full transition-all"
-                style={{ width: `${matchPercentage}%` }}
-              />
-            </div>
-            <span className="text-sm font-bold text-[var(--text-primary)]">
-              {matchPercentage.toFixed(1)}% match
-            </span>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+          <Sparkles className="w-5 h-5" />
+          Lyrics Analysis
+        </h3>
+        <div className="flex items-center gap-2">
+          <div className="text-2xl font-bold text-green-500">
+            {matchPercentage.toFixed(1)}%
           </div>
-          
+          <span className="text-sm text-[var(--text-secondary)]">match</span>
+        </div>
+      </div>
+      
+      {/* Match Progress Bar */}
+      <div className="mb-6">
+        <div className="h-3 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-gradient-to-r from-green-500 via-blue-500 to-purple-500 rounded-full transition-all duration-1000"
+            style={{ width: `${matchPercentage}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Top Matching Segments */}
+      {matchingSegments.length > 0 && (
+        <div className="mb-6">
+          <h4 className="text-sm font-semibold text-[var(--text-secondary)] mb-3 uppercase">
+            Top Matching Phrases
+          </h4>
           <div className="space-y-2">
-            {segments.slice(0, 5).map((segment, idx) => (
+            {matchingSegments.map((segment, idx) => (
               <div 
                 key={idx}
-                className="bg-[var(--bg-tertiary)] rounded-lg p-3 border-l-4 border-blue-500"
+                className="group bg-gradient-to-r from-green-500/10 to-blue-500/10 hover:from-green-500/20 hover:to-blue-500/20 border border-green-500/30 rounded-lg p-3 transition-all"
               >
-                <div className="flex items-start gap-2">
-                  <Check className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
-                  <p className="text-[var(--text-primary)] font-mono text-sm">
-                    "{segment.text}"
-                  </p>
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gradient-to-br from-green-500 to-blue-500 flex items-center justify-center text-white font-bold text-xs">
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[var(--text-primary)] font-medium leading-relaxed">
+                      "{segment.text}"
+                    </p>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                      {segment.words.length} words matched
+                    </p>
+                  </div>
+                  <Check className="w-5 h-5 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
               </div>
             ))}
-            {segments.length > 5 && (
-              <p className="text-[var(--text-secondary)] text-sm text-center pt-2">
-                +{segments.length - 5} more matching segments
-              </p>
-            )}
           </div>
         </div>
-      ) : (
-        <p className="text-[var(--text-secondary)] text-center py-4">
-          No exact phrase matches found
-        </p>
+      )}
+
+      {/* Full Lyrics with Highlighting */}
+      <div className="bg-[var(--bg-tertiary)] rounded-xl p-6 max-h-96 overflow-y-auto">
+        <h4 className="text-sm font-semibold text-[var(--text-secondary)] mb-3 uppercase sticky top-0 bg-[var(--bg-tertiary)] pb-2">
+          Song Lyrics (Matches Highlighted)
+        </h4>
+        <div className="text-[var(--text-primary)] leading-relaxed space-y-2">
+          {highlightedLyrics.map((segment, idx) => (
+            <span
+              key={idx}
+              className={segment.isMatch ? 
+                'bg-gradient-to-r from-yellow-500/30 to-green-500/30 px-1 py-0.5 rounded font-semibold text-[var(--text-primary)] shadow-sm' : 
+                'text-[var(--text-secondary)]'
+              }
+            >
+              {segment.text}{' '}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {matchingSegments.length === 0 && (
+        <div className="text-center py-8 text-[var(--text-secondary)]">
+          <Info className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p>No exact phrase matches found</p>
+          <p className="text-sm mt-1">Match based on semantic similarity</p>
+        </div>
       )}
     </div>
   );
 };
+
 
 const MatchExplanation = ({ match, tier, engine }) => {
   const getExplanation = () => {
@@ -1650,20 +2150,27 @@ function App() {
             };
             
             setResults(resultsData);
+            
+            // FIX: Save to history BEFORE changing view
+            try {
+              await saveToHistory({
+                filename: uploadedFile?.name || 'Unknown',
+                topMatch: resultsData.topMatch,
+                alternatives: resultsData.alternatives,
+                transcription: resultsData.transcription,
+                tier: currentTier,
+                config: processingConfig
+              });
+              console.log('✅ Saved to history successfully');
+            } catch (historyError) {
+              console.error('❌ Failed to save to history:', historyError);
+            }
+            
             setTimeout(() => setView('results'), 500);
           } else {
             setError('No matching songs found in database');
             setTimeout(() => setView('upload'), 2000);
           }
-
-          await saveToHistory({
-            filename: uploadedFile?.name,
-            topMatch: resultsData.topMatch,
-            alternatives: resultsData.alternatives,
-            transcription: resultsData.transcription,
-            tier: currentTier,
-            config: processingConfig
-          });
 
         } else if (statusData.status === 'error') {
           clearInterval(pollInterval);
@@ -1676,7 +2183,7 @@ function App() {
     }, 1000);
 
     return () => clearInterval(pollInterval);
-  }, [jobId, view]);
+  }, [jobId, view, uploadedFile, currentTier, processingConfig]);
 
   const handleFileUpload = (file) => {
     // Check file size based on tier
