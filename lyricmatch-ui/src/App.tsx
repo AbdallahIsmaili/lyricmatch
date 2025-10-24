@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Music, Upload, Loader2, Trophy, Medal, RefreshCw, Sparkles, Zap, Shield, Sun, Moon, History, Info, Activity, Crown, Rocket, Check, Lock, Star, Settings, ChevronDown, X } from 'lucide-react';
+import { Music, Upload, Loader2, Trophy, Medal, RefreshCw, Sparkles, Zap, Shield, Sun, Moon, History, Info, Activity, Crown, Rocket, Check, Lock, Star, Settings, ChevronDown, X, Plus } from 'lucide-react';
 
 // Add after imports, before other code
 const DB_NAME = 'LyricMatchDB';
@@ -767,59 +767,142 @@ const HistoryModal = ({ isOpen, onClose, onSelectItem }) => {
   );
 };
 
+const ArtistFetchModal = ({ isOpen, onClose, onFetch }) => {
+  const [artistName, setArtistName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('');
 
-// Header Component
-const Header = ({ currentTier, onChangeTier }) => {
+  const handleFetch = async () => {
+    if (!artistName.trim()) return;
+    
+    setLoading(true);
+    setStatus('Fetching songs...');
+    
+    try {
+      const response = await fetch('http://localhost:5000/api/lyrics/fetch-artist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ artist_name: artistName })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setStatus(`✅ Added ${data.songs_added} songs for ${data.artist}`);
+        setTimeout(() => {
+          onFetch();
+          onClose();
+        }, 2000);
+      } else {
+        setStatus(`❌ Error: ${data.error}`);
+      }
+    } catch (error) {
+      setStatus(`❌ Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-2xl max-w-md w-full p-6">
+        <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-4">
+          Add Artist to Database
+        </h2>
+        <input
+          type="text"
+          value={artistName}
+          onChange={(e) => setArtistName(e.target.value)}
+          placeholder="Enter artist name..."
+          className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] mb-4"
+          disabled={loading}
+        />
+        {status && (
+          <div className="mb-4 p-3 bg-[var(--bg-secondary)] rounded-lg text-sm">
+            {status}
+          </div>
+        )}
+        <div className="flex gap-3">
+          <button
+            onClick={handleFetch}
+            disabled={loading || !artistName.trim()}
+            className="flex-1 px-6 py-3 bg-gradient-to-r from-[var(--accent)] to-[var(--accent-secondary)] text-[var(--bg-primary)] font-bold rounded-lg disabled:opacity-50"
+          >
+            {loading ? 'Fetching...' : 'Fetch Songs'}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-6 py-3 bg-[var(--bg-secondary)] text-[var(--text-primary)] font-bold rounded-lg"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+const Header = ({ currentTier, onChangeTier, setShowArtistFetch }) => {
   const [showHistory, setShowHistory] = useState(false);
-
   const { theme, toggleTheme } = useTheme();
 
   return (
     <>  
-    <header className="border-b border-[var(--border)] backdrop-blur-xl bg-[var(--bg-header)] sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="relative w-10 h-10 bg-gradient-to-br from-gray-900 to-black rounded-xl flex items-center justify-center border border-[var(--border)] shadow-lg">
-            <Music className="w-6 h-6 text-white" />
+      <header className="border-b border-[var(--border)] backdrop-blur-xl bg-[var(--bg-header)] sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative w-10 h-10 bg-gradient-to-br from-gray-900 to-black rounded-xl flex items-center justify-center border border-[var(--border)] shadow-lg">
+              <Music className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">LyricMatch</h1>
+              <div className="h-0.5 w-full bg-gradient-to-r from-[var(--accent)] to-transparent" />
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">LyricMatch</h1>
-            <div className="h-0.5 w-full bg-gradient-to-r from-[var(--accent)] to-transparent" />
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => setShowHistory(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors border border-[var(--border)]"
-          >
-            <History className="w-4 h-4 text-[var(--text-primary)]" />
-            <span className="text-sm font-medium text-[var(--text-primary)]">History</span>
-          </button>
-          <button
-            onClick={onChangeTier}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors border border-[var(--border)]"
-          >
-            <TierBadge tier={currentTier} />
-            <span className="text-sm font-medium text-[var(--text-secondary)]">Change</span>
-          </button>
-          <button
-            onClick={toggleTheme}
-            className="w-10 h-10 flex items-center justify-center bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors border border-[var(--border)]"
-          >
-            {theme === 'dark' ? <Sun className="w-5 h-5 text-[var(--text-primary)]" /> : <Moon className="w-5 h-5 text-[var(--text-primary)]" />}
-          </button>
-        </div>
-      </div>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setShowHistory(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors border border-[var(--border)]"
+            >
+              <History className="w-4 h-4 text-[var(--text-primary)]" />
+              <span className="text-sm font-medium text-[var(--text-primary)]">History</span>
+            </button>
+            <button
+              onClick={onChangeTier}
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors border border-[var(--border)]"
+            >
+              <TierBadge tier={currentTier} />
+              <span className="text-sm font-medium text-[var(--text-secondary)]">Change</span>
+            </button>
+            <button
+              onClick={toggleTheme}
+              className="w-10 h-10 flex items-center justify-center bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors border border-[var(--border)]"
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5 text-[var(--text-primary)]" /> : <Moon className="w-5 h-5 text-[var(--text-primary)]" />}
+            </button>
+            <button
+              onClick={() => setShowArtistFetch(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors border border-[var(--border)]"
+            >
+              {theme === 'dark' ? <Plus className="w-5 h-5 text-[var(--text-primary)]" /> : <Plus className="w-5 h-5 text-[var(--text-primary)]" />}
 
-    </header>
-    <HistoryModal 
-      isOpen={showHistory} 
-      onClose={() => setShowHistory(false)}
-      onSelectItem={(item) => {
-        // Could re-display results if needed
-        console.log('Selected history item:', item);
-      }}
-    />
+              <span className="text-sm text-[var(--text-primary)]">Add Artist</span>
+            </button>
+          </div>
+        </div>
+      </header>
+      <HistoryModal 
+        isOpen={showHistory} 
+        onClose={() => setShowHistory(false)}
+        onSelectItem={(item) => {
+          // Could re-display results if needed
+          console.log('Selected history item:', item);
+        }}
+      />
     </>
   );
 };
@@ -1487,6 +1570,7 @@ const ResultsView = ({ results, onReset, tier, config }) => {
                 {audioInfo.sample_rate ? `${(audioInfo.sample_rate / 1000).toFixed(1)} kHz` : 'N/A'}
               </p>
             </div>
+            
             <div className="bg-[var(--bg-tertiary)] rounded-lg p-4">
               <p className="text-sm text-[var(--text-tertiary)] mb-1">Duration</p>
               <p className="text-xl font-bold text-[var(--text-primary)]">
@@ -1505,6 +1589,30 @@ const ResultsView = ({ results, onReset, tier, config }) => {
                 {Math.round(topMatch.final_score * 100)}%
               </p>
             </div>
+
+            <div className="bg-[var(--bg-tertiary)] rounded-lg p-4">
+              <p className="text-sm text-[var(--text-tertiary)] mb-1">Bitrate</p>
+              <p className="text-xl font-bold text-[var(--text-primary)]">
+                {audioInfo.bitrate ? `${audioInfo.bitrate} kbps` : 'N/A'}
+              </p>
+            </div>
+            
+            {/* NEW */}
+            <div className="bg-[var(--bg-tertiary)] rounded-lg p-4">
+              <p className="text-sm text-[var(--text-tertiary)] mb-1">Channels</p>
+              <p className="text-xl font-bold text-[var(--text-primary)]">
+                {audioInfo.channels === 2 ? 'Stereo' : 'Mono'}
+              </p>
+            </div>
+            
+            {/* NEW */}
+            <div className="bg-[var(--bg-tertiary)] rounded-lg p-4">
+              <p className="text-sm text-[var(--text-tertiary)] mb-1">File Size</p>
+              <p className="text-xl font-bold text-[var(--text-primary)]">
+                {audioInfo.file_size_mb ? `${audioInfo.file_size_mb} MB` : 'N/A'}
+              </p>
+            </div>
+
           </div>
         </div>
       )}
@@ -2049,6 +2157,8 @@ function App() {
   const [showTierModal, setShowTierModal] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
+
+  const [showArtistFetch, setShowArtistFetch] = useState(false);
   
   const hasTransitionedRef = useRef(false);
 
@@ -2254,7 +2364,8 @@ function App() {
   return (
     <ThemeProvider>
       <div className="min-h-screen bg-[var(--bg-primary)] transition-colors duration-300">
-        <Header currentTier={currentTier} onChangeTier={handleChangeTier} />
+        <Header currentTier={currentTier} onChangeTier={handleChangeTier}
+        setShowArtistFetch={setShowArtistFetch} />
         
         <main className="max-w-7xl mx-auto px-6 py-12">
           {error && (
@@ -2295,6 +2406,15 @@ function App() {
             />
           )}
         </main>
+
+        <ArtistFetchModal 
+          isOpen={showArtistFetch}
+          onClose={() => setShowArtistFetch(false)}
+          onFetch={() => {
+            // Optionally refresh database stats here
+            console.log('Artist fetched successfully');
+          }}
+        />
 
         <TierSelectionModal 
           isOpen={showTierModal}

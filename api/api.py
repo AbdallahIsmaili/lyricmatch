@@ -16,7 +16,10 @@ import numpy as np
 import math
 
 from dotenv import load_dotenv
-import os
+
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from src.lyrics_fetcher import LyricsFetcher
 
 # Load environment variables from .env file
 load_dotenv()
@@ -147,6 +150,8 @@ class LyricMatchAPI:
             
             audio, sr = self.audio_processor.preprocess_audio(audio_path)
             
+            audio_info = self.audio_processor.get_audio_info(str(audio_path))
+
             # Update status: transcribing
             processing_jobs[job_id]['status'] = 'transcribing'
             processing_jobs[job_id]['progress'] = 30
@@ -187,7 +192,10 @@ class LyricMatchAPI:
             processing_jobs[job_id]['results'] = cleaned_results
             processing_jobs[job_id]['audio_info'] = {
                 'duration': float(transcription['duration']) if not math.isnan(transcription['duration']) else None,
-                'sample_rate': int(sr)
+                'sample_rate': int(sr),
+                'channels': audio_info.get('channels', 1),  
+                'bitrate': audio_info.get('bitrate', 0),  
+                'file_size_mb': audio_info.get('file_size_mb', 0)  
             }
             processing_jobs[job_id]['config_used'] = {
                 'whisper_model': config['whisper_model'],
@@ -513,6 +521,110 @@ def search_youtube():
         import traceback
         traceback.print_exc()
         return jsonify({'url': None, 'error': str(e)}), 500
+    
+
+
+@app.route('/api/lyrics/fetch-artist', methods=['POST'])
+def fetch_artist_lyrics():
+    """Fetch and add artist's songs to database with automatic index rebuild"""
+    data = request.json
+    artist_name = data.get('artist_name', '')
+    max_songs = data.get('max_songs', 50)  # Allow customization
+    
+    if not artist_name:
+        return jsonify({'error': 'Artist name required'}), 400
+    
+    try:
+        print(f"\n{'='*60}")
+        print(f"🎵 Fetching lyrics for: {artist_name}")
+        print(f"{'='*60}")
+        
+        fetcher = LyricsFetcher()
+        songs = fetcher.fetch_artist_complete(artist_name, max_songs=max_songs)
+        
+        print(f"\n{'='*60}")
+        print(f"🔄 Clearing cached matchers and rebuilding indexes...")
+        print(f"{'='*60}")
+        
+        # Clear all cached matchers to force reload with new data
+        lyricmatch_api.matchers.clear()
+        
+        # Force rebuild of indexes
+        print("📊 Rebuilding TF-IDF index...")
+        tfidf_matcher = lyricmatch_api.get_matcher('tfidf')
+        print(f"   ✅ TF-IDF ready with {len(tfidf_matcher.songs_df)} songs")
+        
+        print("🧠 Rebuilding neural embeddings...")
+        neural_matcher = lyricmatch_api.get_matcher('neural')
+        neural_matcher.rebuild_embeddings()
+        print(f"   ✅ Neural embeddings ready with {len(neural_matcher.songs_df)} songs")
+        
+        print(f"\n{'='*60}")
+        print(f"✅ ALL DONE! {artist_name} songs are now searchable!")
+        print(f"{'='*60}\n")
+        
+        return jsonify({
+            'success': True,
+            'artist': artist_name,
+            'songs_added': len(songs),
+            'total_songs_in_db': len(tfidf_matcher.songs_df),
+            'message': f'Added {len(songs)} songs for {artist_name}. All indexes rebuilt.',
+            'indexes_rebuilt': True
+        })
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ Error: {error_details}")
+        
+        return jsonify({
+            'error': str(e),
+            'details': error_details
+        }), 500
+
+
+@app.route('/api/lyrics/rebuild-indexes', methods=['POST'])
+def rebuild_indexes():
+    """Manually rebuild all search indexes (useful after manual database changes)"""
+    try:
+        print(f"\n{'='*60}")
+        print(f"🔄 Manual index rebuild requested")
+        print(f"{'='*60}")
+        
+        # Clear cache
+        lyricmatch_api.matchers.clear()
+        
+        # Rebuild TF-IDF
+        print("📊 Rebuilding TF-IDF index...")
+        tfidf_matcher = lyricmatch_api.get_matcher('tfidf')
+        tfidf_count = len(tfidf_matcher.songs_df)
+        
+        # Rebuild neural embeddings
+        print("🧠 Rebuilding neural embeddings...")
+        neural_matcher = lyricmatch_api.get_matcher('neural')
+        neural_matcher.rebuild_embeddings()
+        neural_count = len(neural_matcher.songs_df)
+        
+        print(f"\n✅ All indexes rebuilt successfully!")
+        print(f"   TF-IDF: {tfidf_count} songs")
+        print(f"   Neural: {neural_count} songs")
+        
+        return jsonify({
+            'success': True,
+            'message': 'All indexes rebuilt',
+            'tfidf_songs': tfidf_count,
+            'neural_songs': neural_count
+        })
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ Error: {error_details}")
+        
+        return jsonify({
+            'error': str(e),
+            'details': error_details
+        }), 500
     
 
 # Clean up old jobs periodically

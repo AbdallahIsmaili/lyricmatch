@@ -164,14 +164,26 @@ class AudioProcessor:
         Returns:
             Dictionary with audio information
         """
+        import soundfile as sf
+
         audio, sr = self.load_audio(audio_path)
         
+        with sf.SoundFile(audio_path) as f:
+            channels = f.channels
+            subtype = f.subtype
+        
+        file_size = Path(audio_path).stat().st_size
+        duration = len(audio) / sr
+        bitrate = (file_size * 8) / duration / 1000  # kbps
+
         info = {
             'duration': len(audio) / sr,
             'sample_rate': sr,
-            'channels': 1,  # We always convert to mono
+            'channels': channels,
             'samples': len(audio),
             'format': Path(audio_path).suffix,
+            'bitrate': round(bitrate, 1),  # NEW
+            'file_size_mb': round(file_size / (1024*1024), 2),  # NEW
             'rms_energy': np.sqrt(np.mean(audio**2)),
             'max_amplitude': np.max(np.abs(audio))
         }
