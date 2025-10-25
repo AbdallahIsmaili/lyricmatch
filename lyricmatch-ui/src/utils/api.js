@@ -9,23 +9,23 @@ const api = axios.create({
   },
 });
 
-export const uploadAudio = async (file) => {
-  const formData = new FormData();
-  formData.append('audio', file);
+// export const uploadAudio = async (file) => {
+//   const formData = new FormData();
+//   formData.append('audio', file);
   
-  const response = await axios.post(`${API_BASE_URL}/upload`, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+//   const response = await axios.post(`${API_BASE_URL}/upload`, formData, {
+//     headers: {
+//       'Content-Type': 'multipart/form-data',
+//     },
+//   });
   
-  return response.data;
-};
+//   return response.data;
+// };
 
-export const getJobStatus = async (jobId) => {
-  const response = await api.get(`/status/${jobId}`);
-  return response.data;
-};
+// export const getJobStatus = async (jobId) => {
+//   const response = await api.get(`/status/${jobId}`);
+//   return response.data;
+// };
 
 export const searchLyrics = async (query) => {
   const response = await api.post('/search', { query });
@@ -40,4 +40,84 @@ export const getStats = async () => {
 export const healthCheck = async () => {
   const response = await api.get('/health');
   return response.data;
+};
+
+
+export const uploadAudio = async (file, config, tier) => {
+  const formData = new FormData();
+  formData.append('audio', file);
+  formData.append('tier', tier);
+  formData.append('whisper_model', config.whisper_model);
+  formData.append('engine', config.engine);
+  if (config.sbert_model) {
+    formData.append('sbert_model', config.sbert_model);
+  }
+  
+  const response = await fetch(`${API_BASE}/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Upload failed');
+  }
+  return response.json();
+};
+
+export const getJobStatus = async (jobId) => {
+  const response = await fetch(`${API_BASE}/status/${jobId}`);
+  if (!response.ok) throw new Error('Status check failed');
+  return response.json();
+};
+
+export const fetchSpotifyTrack = async (artist, title) => {
+  try {
+    const response = await fetch(`${API_BASE}/spotify/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artist, title })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data;
+    }
+  } catch (error) {
+    console.error('Spotify fetch error:', error);
+  }
+  return null;
+};
+
+export const fetchYouTubeVideo = async (artist, title) => {
+  try {
+    const response = await fetch(`${API_BASE}/youtube/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artist, title })
+    });
+    
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (error) {
+    console.error('YouTube fetch error:', error);
+  }
+  return null;
+};
+
+export const fetchArtistSongs = async (artistName) => {
+  const response = await fetch(`${API_BASE}/lyrics/fetch-artist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ artist_name: artistName })
+  });
+  
+  const data = await response.json();
+  
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to fetch artist songs');
+  }
+  
+  return data;
 };
