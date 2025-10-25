@@ -1,113 +1,92 @@
-import React from 'react';
-import { Loader2 } from 'lucide-react';
+// src/components/ProcessingView.jsx
+import React, { useState, useEffect } from 'react';
+import { Loader2, Activity } from 'lucide-react';
+import { TierBadge } from './TierBadge';
+import { WaveformVisualizer } from './WaveformVisualizer';
 
-const ProcessingView = ({ progress, filename, status }) => {
-  // Ensure progress is a valid number
-  const safeProgress = Math.min(100, Math.max(0, parseInt(progress) || 0));
+export const ProcessingView = ({ progress, filename, status, tier, config }) => {
+  const [displayProgress, setDisplayProgress] = useState(0);
+  
+  useEffect(() => {
+    const safeProgress = Math.min(100, Math.max(0, parseInt(progress) || 0));
+    setDisplayProgress(prev => Math.max(prev, safeProgress));
+  }, [progress]);
   
   const stages = {
-    'queued': { name: 'Queued', color: 'text-blue-400' },
-    'preprocessing': { name: 'Preprocessing Audio', color: 'text-purple-400' },
-    'transcribing': { name: 'Transcribing Lyrics', color: 'text-pink-400' },
-    'matching': { name: 'Matching Database', color: 'text-green-400' },
-    'complete': { name: 'Complete!', color: 'text-emerald-400' }
+    'queued': { name: 'Queued', minProgress: 0 },
+    'preprocessing': { name: 'Preprocessing Audio', minProgress: 10 },
+    'transcribing': { name: `Transcribing (${config?.whisper_model || 'base'})`, minProgress: 30 },
+    'matching': { name: `Matching (${config?.engine || 'tfidf'})`, minProgress: 70 },
+    'complete': { name: 'Complete!', minProgress: 100 }
   };
 
   const currentStage = stages[status] || stages['queued'];
+  const isProcessing = status !== 'queued' && status !== 'complete';
 
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <div className="w-full max-w-3xl">
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-white mb-2">
-            Analyzing Audio
-          </h2>
-          <p className="text-white/60">{filename}</p>
+          <div className="inline-flex items-center gap-2 mb-4">
+            <TierBadge tier={tier} size="lg" />
+            {config?.engine && (
+              <div className="px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-full text-sm font-semibold text-[var(--text-primary)]">
+                {config.engine.toUpperCase()}
+              </div>
+            )}
+          </div>
+          <h2 className="text-4xl font-bold text-[var(--text-primary)] mb-3 tracking-tight">Analyzing Audio</h2>
+          <p className="text-[var(--text-secondary)] text-lg font-mono">{filename}</p>
         </div>
 
-        {/* Large Circular Spinner */}
+        <div className="mb-8 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Activity className="w-5 h-5 text-[var(--text-primary)]" />
+            <span className="text-sm font-semibold text-[var(--text-primary)]">Audio Waveform</span>
+          </div>
+          <WaveformVisualizer isActive={isProcessing} />
+        </div>
+
         <div className="flex justify-center mb-12">
-          <div className="relative w-64 h-64">
-            {/* Background Circle */}
-            <svg className="w-64 h-64 transform -rotate-90">
+          <div className="relative w-72 h-72">
+            <svg className="w-72 h-72 transform -rotate-90">
+              <circle cx="144" cy="144" r="136" stroke="currentColor" strokeWidth="12" fill="none" className="text-[var(--border)]" />
               <circle
-                cx="128"
-                cy="128"
-                r="120"
-                stroke="currentColor"
-                strokeWidth="8"
-                fill="none"
-                className="text-white/10"
-              />
-              {/* Progress Circle */}
-              <circle
-                cx="128"
-                cy="128"
-                r="120"
+                cx="144" cy="144" r="136"
                 stroke="url(#gradient)"
-                strokeWidth="8"
-                fill="none"
-                strokeDasharray={`${2 * Math.PI * 120}`}
-                strokeDashoffset={`${2 * Math.PI * 120 * (1 - safeProgress / 100)}`}
+                strokeWidth="12" fill="none"
+                strokeDasharray={`${2 * Math.PI * 136}`}
+                strokeDashoffset={`${2 * Math.PI * 136 * (1 - displayProgress / 100)}`}
                 strokeLinecap="round"
                 className="transition-all duration-500 ease-out"
               />
               <defs>
                 <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#a855f7" />
-                  <stop offset="100%" stopColor="#ec4899" />
+                  <stop offset="0%" stopColor="var(--accent)" />
+                  <stop offset="100%" stopColor="var(--accent-secondary)" />
                 </linearGradient>
               </defs>
             </svg>
-
-            {/* Center Content */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <Loader2 className={`w-16 h-16 ${currentStage.color} animate-spin mb-3`} />
-              <div className="text-5xl font-bold text-white mb-1">
-                {Math.round(safeProgress)}%
-              </div>
-              <div className={`${currentStage.color} font-semibold`}>
-                {currentStage.name}
-              </div>
+              <Loader2 className="w-20 h-20 text-[var(--text-primary)] animate-spin mb-4" />
+              <div className="text-6xl font-bold text-[var(--text-primary)] mb-2">{Math.round(displayProgress)}%</div>
+              <div className="text-[var(--text-secondary)] font-semibold">{currentStage.name}</div>
             </div>
           </div>
         </div>
 
-        {/* Processing Stages */}
-        <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
-          <div className="space-y-4">
+        <div className="bg-[var(--bg-secondary)] rounded-2xl p-8 border border-[var(--border)]">
+          <div className="space-y-5">
             {Object.entries(stages).map(([key, stage]) => {
               const isActive = key === status;
-              const threshold = {
-                'queued': 0,
-                'preprocessing': 10,
-                'transcribing': 30,
-                'matching': 70,
-                'complete': 100
-              }[key];
-              const isCompleted = safeProgress > threshold;
-
+              const isCompleted = displayProgress >= stage.minProgress;
               return (
-                <div 
-                  key={key}
-                  className={`flex items-center gap-3 transition-all duration-300 ${
-                    isActive ? 'scale-105' : ''
-                  }`}
-                >
-                  <div className={`
-                    w-3 h-3 rounded-full transition-all duration-300
-                    ${isCompleted ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-white/20'}
-                    ${isActive ? 'animate-pulse' : ''}
-                  `} />
-                  <div className={`
-                    flex-1 font-medium transition-colors duration-300
-                    ${isActive ? stage.color : isCompleted ? 'text-white/80' : 'text-white/40'}
-                  `}>
+                <div key={key} className={`flex items-center gap-4 transition-all ${isActive ? 'scale-105' : ''}`}>
+                  <div className={`w-4 h-4 rounded-full transition-all ${isCompleted ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'} ${isActive ? 'animate-pulse' : ''}`} />
+                  <div className={`flex-1 font-medium text-lg ${isActive ? 'text-[var(--text-primary)]' : isCompleted ? 'text-[var(--text-secondary)]' : 'text-[var(--text-tertiary)]'}`}>
                     {stage.name}
                   </div>
-                  {isCompleted && !isActive && (
-                    <div className="text-green-400">✓</div>
-                  )}
+                  {isCompleted && !isActive && <div className="text-[var(--accent)] font-bold text-xl">✓</div>}
                 </div>
               );
             })}
@@ -117,5 +96,3 @@ const ProcessingView = ({ progress, filename, status }) => {
     </div>
   );
 };
-
-export default ProcessingView;

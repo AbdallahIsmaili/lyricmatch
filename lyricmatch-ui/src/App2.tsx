@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Music, Upload, Loader2, Trophy, Medal, RefreshCw, Sparkles, Zap, Shield, Sun, Moon, History, Info, Activity, Crown, Rocket, Check, Lock, Star, Settings, ChevronDown, X, Plus } from 'lucide-react';
 
 // Add after imports, before other code
-const DB_NAME = 'LyricMatchDB';
+const DB_NAME = 'WaveSeekDB';
 const STORE_NAME = 'searchHistory';
 
 const initDB = () => {
@@ -859,7 +859,7 @@ const Header = ({ currentTier, onChangeTier, setShowArtistFetch }) => {
               <Music className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">LyricMatch</h1>
+              <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">WaveSeek</h1>
               <div className="h-0.5 w-full bg-gradient-to-r from-[var(--accent)] to-transparent" />
             </div>
           </div>
@@ -2139,19 +2139,19 @@ const SongPreview = ({ artist, title, album }) => {
 
 // Main App Component
 function App() {
-  const [view, setView] = useState(() => sessionStorage.getItem('lyricmatch_view') || 'upload');
+  const [view, setView] = useState(() => sessionStorage.getItem('waveseek_view') || 'upload');
   const [uploadedFile, setUploadedFile] = useState(null);
-  const [jobId, setJobId] = useState(() => sessionStorage.getItem('lyricmatch_jobId') || null);
+  const [jobId, setJobId] = useState(() => sessionStorage.getItem('waveseek_jobId') || null);
   const [results, setResults] = useState(() => {
-    const saved = sessionStorage.getItem('lyricmatch_results');
+    const saved = sessionStorage.getItem('waveseek_results');
     return saved ? JSON.parse(saved) : null;
   });
-  const [progress, setProgress] = useState(() => parseInt(sessionStorage.getItem('lyricmatch_progress') || '0'));
-  const [status, setStatus] = useState(() => sessionStorage.getItem('lyricmatch_status') || '');
+  const [progress, setProgress] = useState(() => parseInt(sessionStorage.getItem('waveseek_progress') || '0'));
+  const [status, setStatus] = useState(() => sessionStorage.getItem('waveseek_status') || '');
   const [error, setError] = useState(null);
-  const [currentTier, setCurrentTier] = useState(() => sessionStorage.getItem('lyricmatch_tier') || 'free');
+  const [currentTier, setCurrentTier] = useState(() => sessionStorage.getItem('waveseek_tier') || 'free');
   const [processingConfig, setProcessingConfig] = useState(() => {
-    const saved = sessionStorage.getItem('lyricmatch_config');
+    const saved = sessionStorage.getItem('waveseek_config');
     return saved ? JSON.parse(saved) : null;
   });
   const [showTierModal, setShowTierModal] = useState(false);
@@ -2164,31 +2164,31 @@ function App() {
 
   // Persist state changes
   useEffect(() => {
-    sessionStorage.setItem('lyricmatch_view', view);
+    sessionStorage.setItem('waveseek_view', view);
   }, [view]);
 
   useEffect(() => {
-    if (jobId) sessionStorage.setItem('lyricmatch_jobId', jobId);
+    if (jobId) sessionStorage.setItem('waveseek_jobId', jobId);
   }, [jobId]);
 
   useEffect(() => {
-    if (results) sessionStorage.setItem('lyricmatch_results', JSON.stringify(results));
+    if (results) sessionStorage.setItem('waveseek_results', JSON.stringify(results));
   }, [results]);
 
   useEffect(() => {
-    sessionStorage.setItem('lyricmatch_progress', progress.toString());
+    sessionStorage.setItem('waveseek_progress', progress.toString());
   }, [progress]);
 
   useEffect(() => {
-    if (status) sessionStorage.setItem('lyricmatch_status', status);
+    if (status) sessionStorage.setItem('waveseek_status', status);
   }, [status]);
 
   useEffect(() => {
-    sessionStorage.setItem('lyricmatch_tier', currentTier);
+    sessionStorage.setItem('waveseek_tier', currentTier);
   }, [currentTier]);
 
   useEffect(() => {
-    if (processingConfig) sessionStorage.setItem('lyricmatch_config', JSON.stringify(processingConfig));
+    if (processingConfig) sessionStorage.setItem('waveseek_config', JSON.stringify(processingConfig));
   }, [processingConfig]);
 
   const uploadAudio = async (file, config) => {
@@ -2344,12 +2344,12 @@ function App() {
     hasTransitionedRef.current = false;
     
     // Clear session storage
-    sessionStorage.removeItem('lyricmatch_view');
-    sessionStorage.removeItem('lyricmatch_jobId');
-    sessionStorage.removeItem('lyricmatch_results');
-    sessionStorage.removeItem('lyricmatch_progress');
-    sessionStorage.removeItem('lyricmatch_status');
-    sessionStorage.removeItem('lyricmatch_config');
+    sessionStorage.removeItem('waveseek_view');
+    sessionStorage.removeItem('waveseek_jobId');
+    sessionStorage.removeItem('waveseek_results');
+    sessionStorage.removeItem('waveseek_progress');
+    sessionStorage.removeItem('waveseek_status');
+    sessionStorage.removeItem('waveseek_config');
   };
 
   const handleChangeTier = () => {

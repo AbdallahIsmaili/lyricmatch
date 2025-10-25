@@ -1,0 +1,47 @@
+/* src/styles/theme.css */
+:root[data-theme="dark"] {
+  --bg-primary: #000000;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #262626;
+  --bg-header: rgba(0, 0, 0, 0.95);
+  --text-primary: #ffffff;
+  --text-secondary: #9ca3af;
+  --text-tertiary: #6b7280;
+  --border: #333333;
+  --accent: #ffffff;
+  --accent-secondary: #9ca3af;
+  --premium: #fbbf24;
+  --premium-glow: rgba(251, 191, 36, 0.3);
+}
+
+:root[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f4f6;
+  --bg-tertiary: #e5e7eb;
+  --bg-header: rgba(255, 255, 255, 0.95);
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --border: #d1d5db;
+  --accent: #111827;
+  --accent-secondary: #4b5563;
+  --premium: #f59e0b;
+  --premium-glow: rgba(245, 158, 11, 0.3);
+}
+
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 300ms;
+  transition-timing-function: ease-in-out;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.premium-shimmer {
+  background: linear-gradient(90deg, transparent, var(--premium-glow), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 3s infinite;
+}
