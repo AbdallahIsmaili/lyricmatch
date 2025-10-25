@@ -1,5 +1,5 @@
 """
-Flask API Backend for LyricMatch Web App with Tier System
+Flask API Backend for WaveSeek Web App with Tier System
 Location: api/api.py
 """
 from flask import Flask, request, jsonify
@@ -43,7 +43,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Configuration
-UPLOAD_FOLDER = Path(tempfile.gettempdir()) / 'lyricmatch_uploads'
+UPLOAD_FOLDER = Path(tempfile.gettempdir()) / 'waveseek_uploads'
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.flac', '.ogg', '.webm'}  
 
@@ -103,14 +103,14 @@ def convert_to_native_types(obj):
     else:
         return str(obj)
 
-class LyricMatchAPI:
-    """API wrapper for LyricMatch with tier support"""
+class WaveSeekAPI:
+    """API wrapper for WaveSeek with tier support"""
     
     def __init__(self):
         self.audio_processor = AudioProcessor()
         self.transcribers = {}  # Cache transcribers by model
         self.matchers = {}  # Cache matchers by engine
-        print("✅ LyricMatch API initialized")
+        print("✅ WaveSeek API initialized")
     
     def get_transcriber(self, model_name):
         """Get or create transcriber for model"""
@@ -220,7 +220,7 @@ class LyricMatchAPI:
             traceback.print_exc()
 
 # Initialize API
-lyricmatch_api = LyricMatchAPI()
+waveseek_api = WaveSeekAPI()
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -228,7 +228,7 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'version': '2.0.0',
-        'database_songs': len(lyricmatch_api.matchers.get('tfidf_default', LyricsMatcher()).songs_df) if lyricmatch_api.matchers.get('tfidf_default') else 0
+        'database_songs': len(waveseek_api.matchers.get('tfidf_default', LyricsMatcher()).songs_df) if waveseek_api.matchers.get('tfidf_default') else 0
     })
 
 @app.route('/api/tiers', methods=['GET'])
@@ -357,7 +357,7 @@ def upload_audio():
     
     # Start processing
     thread = Thread(
-        target=lyricmatch_api.process_audio,
+        target=waveseek_api.process_audio,
         args=(job_id, filepath, config)
     )
     thread.daemon = True
@@ -414,7 +414,7 @@ def search_lyrics():
     if not query:
         return jsonify({'error': 'No query provided'}), 400
     
-    matcher = lyricmatch_api.get_matcher('tfidf')
+    matcher = waveseek_api.get_matcher('tfidf')
     results = matcher.match_with_details(query, top_k=5)
     results_native = convert_to_native_types(results)
     
@@ -428,7 +428,7 @@ def search_lyrics():
 def get_stats():
     """Get database statistics"""
     try:
-        matcher = lyricmatch_api.get_matcher('tfidf')
+        matcher = waveseek_api.get_matcher('tfidf')
         stats = matcher.db.get_database_stats()
         stats_native = convert_to_native_types(stats)
         return jsonify(stats_native)
@@ -547,15 +547,15 @@ def fetch_artist_lyrics():
         print(f"{'='*60}")
         
         # Clear all cached matchers to force reload with new data
-        lyricmatch_api.matchers.clear()
+        waveseek_api.matchers.clear()
         
         # Force rebuild of indexes
         print("📊 Rebuilding TF-IDF index...")
-        tfidf_matcher = lyricmatch_api.get_matcher('tfidf')
+        tfidf_matcher = waveseek_api.get_matcher('tfidf')
         print(f"   ✅ TF-IDF ready with {len(tfidf_matcher.songs_df)} songs")
         
         print("🧠 Rebuilding neural embeddings...")
-        neural_matcher = lyricmatch_api.get_matcher('neural')
+        neural_matcher = waveseek_api.get_matcher('neural')
         neural_matcher.rebuild_embeddings()
         print(f"   ✅ Neural embeddings ready with {len(neural_matcher.songs_df)} songs")
         
@@ -592,16 +592,16 @@ def rebuild_indexes():
         print(f"{'='*60}")
         
         # Clear cache
-        lyricmatch_api.matchers.clear()
+        waveseek_api.matchers.clear()
         
         # Rebuild TF-IDF
         print("📊 Rebuilding TF-IDF index...")
-        tfidf_matcher = lyricmatch_api.get_matcher('tfidf')
+        tfidf_matcher = waveseek_api.get_matcher('tfidf')
         tfidf_count = len(tfidf_matcher.songs_df)
         
         # Rebuild neural embeddings
         print("🧠 Rebuilding neural embeddings...")
-        neural_matcher = lyricmatch_api.get_matcher('neural')
+        neural_matcher = waveseek_api.get_matcher('neural')
         neural_matcher.rebuild_embeddings()
         neural_count = len(neural_matcher.songs_df)
         
@@ -654,7 +654,7 @@ cleanup_thread.start()
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("🚀 Starting LyricMatch SaaS API Server")
+    print("🚀 Starting WaveSeek SaaS API Server")
     print("="*60)
     print(f"🌐 Running on: http://localhost:5000")
     print(f"🔗 Health Check: http://localhost:5000/api/health")

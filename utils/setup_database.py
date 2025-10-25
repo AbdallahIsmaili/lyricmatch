@@ -16,7 +16,7 @@ from config import Config
 def main():
     """Main setup function"""
     print("\n╔" + "="*58 + "╗")
-    print("║" + " "*10 + "LYRICMATCH DATABASE SETUP" + " "*23 + "║")
+    print("║" + " "*10 + "WAVESEEK DATABASE SETUP" + " "*23 + "║")
     print("╚" + "="*58 + "╝\n")
     
     # Check if CSV directory exists

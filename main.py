@@ -1,5 +1,5 @@
 """
-Main pipeline for LyricMatch - Audio to Song Recognition
+Main pipeline for WaveSeek - Audio to Song Recognition
 Enhanced with neural embeddings support
 """
 import argparse
@@ -13,12 +13,12 @@ from src.matcher import LyricsMatcher  # TF-IDF
 from src.neural_matcher import NeuralLyricsMatcher  # Neural
 
 
-class LyricMatch:
-    """Main LyricMatch pipeline with multiple matching engines"""
+class WaveSeek:
+    """Main WaveSeek pipeline with multiple matching engines"""
     
     def __init__(self, whisper_model=None, language=None, matching_engine=None):
         """
-        Initialize LyricMatch pipeline
+        Initialize WaveSeek pipeline
         
         Args:
             whisper_model: Whisper model size to use
@@ -26,7 +26,7 @@ class LyricMatch:
             matching_engine: 'tfidf', 'neural', or 'hybrid'
         """
         print("\n╔" + "="*58 + "╗")
-        print("║" + " "*20 + "LYRICMATCH" + " "*28 + "║")
+        print("║" + " "*20 + "WAVESEEK" + " "*28 + "║")
         print("║" + " "*12 + "Audio-to-Lyrics Song Recognition" + " "*13 + "║")
         print("╚" + "="*58 + "╝\n")
         
@@ -254,7 +254,7 @@ class LyricMatch:
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description='LyricMatch - Identify songs from audio clips (Neural Embeddings)',
+        description='WaveSeek - Identify songs from audio clips (Neural Embeddings)',
         epilog='Examples:\n'
                '  %(prog)s song.wav                      # Use default engine\n'
                '  %(prog)s song.wav -e neural           # Neural embeddings\n'
@@ -355,34 +355,34 @@ def main():
         Config.set_sbert_model(args.sbert_model)
     
     try:
-        # Initialize LyricMatch
-        lyricmatch = LyricMatch(
+        # Initialize WaveSeek
+        waveseek = WaveSeek(
             whisper_model=args.model,
             language=language,
             matching_engine=args.engine
         )
         
         # Rebuild embeddings if requested
-        if args.rebuild_embeddings and isinstance(lyricmatch.matcher, NeuralLyricsMatcher):
+        if args.rebuild_embeddings and isinstance(waveseek.matcher, NeuralLyricsMatcher):
             print("\n🔄 Rebuilding neural embeddings...")
-            lyricmatch.matcher.rebuild_embeddings()
+            waveseek.matcher.rebuild_embeddings()
         
         # Process audio
         if args.batch:
-            results = lyricmatch.batch_identify(
+            results = waveseek.batch_identify(
                 args.audio_path, 
                 args.output,
                 language=language
             )
         else:
-            results = lyricmatch.identify_song(
+            results = waveseek.identify_song(
                 args.audio_path,
                 preprocess=not args.no_preprocess,
                 top_k=args.top_k,
                 language=language
             )
         
-        lyricmatch.close()
+        waveseek.close()
         
         # Return appropriate exit code
         if args.batch:

@@ -1,8 +1,8 @@
-# LyricMatch - Project Status & Roadmap
+# WaveSeek - Project Status & Roadmap
 
 ## 📊 **What This Is**
 
-**LyricMatch** is an advanced **AI-powered audio-to-song recognition system** that identifies songs through sophisticated lyrics analysis:
+**WaveSeek** is an advanced **AI-powered audio-to-song recognition system** that identifies songs through sophisticated lyrics analysis:
 
 **Core Pipeline:**
 1. **Audio Processing** → Handles MP3, WAV, M4A, FLAC, OGG, WebM with noise reduction
@@ -122,10 +122,10 @@
 
 ### **High Priority**
 1. **Docker setup** - Package entire stack for one-command deployment
-2. **Lyrics API integration** - Auto-update database from Genius/Musixmatch
+2. ✅ **Lyrics API integration** - Auto-update database from Genius/Musixmatch (DONE WITH GENIUS API)
 3. **Result export** - JSON/CSV download of match results
 4. **PWA manifest** - Enable "Add to Home Screen" on mobile
-5. **Audio quality info** - Display bitrate, channels in results
+5. ✅ **Audio quality info** - Display bitrate, channels in results (DONE)
 
 ### **Medium Priority**
 6. **Alternative matches display** - Show top 5 instead of just 1
@@ -207,7 +207,7 @@
 - **Song statistics** - Most searched, hardest to identify, etc.
 
 ### **Developer Tools**
-- **Public API** - Let developers build on LyricMatch
+- **Public API** - Let developers build on WaveSeek
 - **Webhook support** - Real-time match notifications
 - **Bulk processing API** - For music libraries
 - **SDK packages** - Python, JavaScript, etc.

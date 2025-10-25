@@ -1,5 +1,5 @@
 """
-Quick demo of LyricMatch functionality
+Quick demo of WaveSeek functionality
 Shows all components working together
 """
 from pathlib import Path
@@ -139,7 +139,7 @@ def demo_audio_samples():
 def main():
     """Run complete demo"""
     print("\n╔" + "="*58 + "╗")
-    print("║" + " "*18 + "LYRICMATCH DEMO" + " "*25 + "║")
+    print("║" + " "*18 + "WAVESEEK DEMO" + " "*25 + "║")
     print("╚" + "="*58 + "╝")
     
     results = []
@@ -168,7 +168,7 @@ def main():
     
     if passed == total:
         print("🎉 All demos completed successfully!")
-        print("\n🚀 Ready to use LyricMatch!")
+        print("\n🚀 Ready to use WaveSeek!")
         print("\n📝 Next steps:")
         print("   • Add audio files: data/audio_samples/")
         print("   • Test transcription: python test_transcription.py")

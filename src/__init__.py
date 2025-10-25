@@ -1,5 +1,5 @@
 """
-LyricMatch - Lyrics-based Song Recognition System
+WaveSeek - Lyrics-based Song Recognition System
 """
 
 from .audio_processor import AudioProcessor

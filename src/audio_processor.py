@@ -1,5 +1,5 @@
 """
-Audio processing module for LyricMatch
+Audio processing module for WaveSeek
 Handles audio loading, preprocessing, and noise reduction
 """
 import librosa

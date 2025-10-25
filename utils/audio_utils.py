@@ -1,5 +1,5 @@
 """
-Audio utility functions for LyricMatch
+Audio utility functions for WaveSeek
 Handles downloading, renaming, and organizing audio files
 """
 import sys

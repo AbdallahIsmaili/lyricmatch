@@ -1,5 +1,5 @@
 """
-Configuration settings for LyricMatch
+Configuration settings for WaveSeek
 Enhanced with neural embeddings support
 """
 import os
@@ -110,7 +110,7 @@ class Config:
         
         info = f"""
         ╔══════════════════════════════════════════╗
-        ║         LyricMatch Configuration          ║
+        ║         WaveSeek Configuration          ║
         ╚══════════════════════════════════════════╝
         
         📁 Directories:

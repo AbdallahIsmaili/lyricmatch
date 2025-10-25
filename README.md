@@ -1,4 +1,4 @@
-# 🎵 LyricMatch AI - Multilingual Song Recognition System
+# 🎵 WaveSeek AI - Multilingual Song Recognition System
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -11,7 +11,7 @@
 
 ## 🌟 Overview
 
-LyricMatch AI is a comprehensive audio recognition system that identifies songs through intelligent lyric transcription and matching. Unlike traditional audio fingerprinting systems (like Shazam), we analyze the semantic content of lyrics using state-of-the-art AI models, making our system uniquely capable of:
+WaveSeek AI is a comprehensive audio recognition system that identifies songs through intelligent lyric transcription and matching. Unlike traditional audio fingerprinting systems (like Shazam), we analyze the semantic content of lyrics using state-of-the-art AI models, making our system uniquely capable of:
 
 - **Multilingual Recognition**: Automatic language detection across 90+ languages
 - **Semantic Understanding**: Neural embeddings (BERT) for contextual meaning analysis
@@ -161,8 +161,8 @@ This project is **Phase 1** of our ambitious audio AI pipeline:
 
 ```bash
 # Clone the repository
-git clone https://github.com/AbdallahIsmaili/lyricmatch.git
-cd lyricmatch
+git clone https://github.com/AbdallahIsmaili/waveseek.git
+cd waveseek
 
 # Create virtual environment
 python -m venv venv
@@ -299,17 +299,17 @@ python main.py audio/mysong.wav --rebuild-embeddings
 ### Python API
 
 ```python
-from main import LyricMatch
+from main import WaveSeek
 
 # Initialize with custom configuration
-lyricmatch = LyricMatch(
+waveseek = WaveSeek(
     whisper_model='base',      # tiny, base, small, medium, large
     language='en',              # or None for auto-detect
     matching_engine='neural'    # tfidf, neural, or hybrid
 )
 
 # Identify a song
-results = lyricmatch.identify_song(
+results = waveseek.identify_song(
     'audio/song.wav',
     preprocess=True,     # Apply noise reduction
     top_k=5,             # Number of matches
@@ -325,7 +325,7 @@ if results:
     print(f"Language: {top_match['transcription_language']}")
 
 # Clean up
-lyricmatch.close()
+waveseek.close()
 ```
 
 ### Web API
@@ -568,7 +568,7 @@ TIER_CONFIGS = {
 ### Project Structure
 
 ```
-lyricmatch/
+waveseek/
 ├── api/
 │   └── api.py                 # Flask backend API
 ├── src/
@@ -579,7 +579,7 @@ lyricmatch/
 │   ├── matcher.py             # TF-IDF matching engine
 │   ├── neural_matcher.py      # Neural embeddings matcher
 │   └── database.py            # SQLite database management
-├── lyricmatch-ui/
+├── waveseek-ui/
 │   ├── src/
 │   │   ├── App.tsx            # Main React application
 │   │   └── ...
@@ -644,7 +644,7 @@ class CustomMatcher:
 # api/api.py
 from src.custom_matcher import CustomMatcher
 
-# In LyricMatchAPI.get_matcher()
+# In WaveSeekAPI.get_matcher()
 elif engine == 'custom':
     self.matchers[cache_key] = CustomMatcher()
 ```
@@ -694,8 +694,8 @@ We welcome contributions! Here's how you can help:
 
 ### Ways to Contribute
 
-- 🐛 **Bug Reports**: Found a bug? [Open an issue](https://github.com/AbdallahIsmaili/lyricmatch/issues)
-- ✨ **Feature Requests**: Have an idea? [Suggest it](https://github.com/AbdallahIsmaili/lyricmatch/discussions)
+- 🐛 **Bug Reports**: Found a bug? [Open an issue](https://github.com/AbdallahIsmaili/waveseek/issues)
+- ✨ **Feature Requests**: Have an idea? [Suggest it](https://github.com/AbdallahIsmaili/waveseek/discussions)
 - 📝 **Documentation**: Improve our docs
 - 🔧 **Code**: Submit pull requests
 
@@ -786,7 +786,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 ```
 MIT License
 
-Copyright (c) 2024 LyricMatch AI
+Copyright (c) 2024 WaveSeek AI
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -823,16 +823,16 @@ SOFTWARE.
 ## 📞 Support
 
 - 📧 **Email**: ismaili.abdallah.me@gmail.com
-<!-- - 💬 **Discord**: [Join our community](https://discord.gg/lyricmatch)
-- 🐦 **Twitter**: [@LyricMatchAI](https://twitter.com/lyricmatchai)
-- 📖 **Docs**: [Full Documentation](https://docs.lyricmatch-ai.com) -->
-- 🐛 **Issues**: [GitHub Issues](https://github.com/AbdallahIsmaili/lyricmatch/issues)
+<!-- - 💬 **Discord**: [Join our community](https://discord.gg/waveseek)
+- 🐦 **Twitter**: [@WaveSeekAI](https://twitter.com/waveseekai)
+- 📖 **Docs**: [Full Documentation](https://docs.waveseek-ai.com) -->
+- 🐛 **Issues**: [GitHub Issues](https://github.com/AbdallahIsmaili/waveseek/issues)
 
 ---
 
 ## 🌟 Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=AbdallahIsmaili/lyricmatch&type=Date)](https://star-history.com/#AbdallahIsmaili/lyricmatch&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=AbdallahIsmaili/waveseek&type=Date)](https://star-history.com/#AbdallahIsmaili/waveseek&Date)
 
 ---
 
@@ -850,6 +850,6 @@ SOFTWARE.
 
 **Made with ❤️ for the music and AI community**
 
-[⬆ Back to Top](#-lyricmatch---multilingual-song-recognition-system)
+[⬆ Back to Top](#-waveseek---multilingual-song-recognition-system)
 
 </div>

@@ -1,4 +1,4 @@
-# LyricMatch Requirements - Windows Compatible
+# WaveSeek Requirements - Windows Compatible
 # Install with: pip install -r requirements.txt
 
 # Core Dependencies

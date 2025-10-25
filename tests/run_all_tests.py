@@ -1,5 +1,5 @@
 """
-Run all LyricMatch tests in sequence
+Run all WaveSeek tests in sequence
 """
 import sys
 import subprocess
@@ -43,7 +43,7 @@ def run_test(test_file, description):
 def main():
     """Run all tests"""
     print("\n╔" + "="*68 + "╗")
-    print("║" + " "*20 + "LYRICMATCH TEST SUITE" + " "*27 + "║")
+    print("║" + " "*20 + "WAVESEEK TEST SUITE" + " "*27 + "║")
     print("╚" + "="*68 + "╝")
     
     tests_dir = Path(__file__).parent
@@ -126,7 +126,7 @@ def main():
     
     # Final message
     if passed == total:
-        print("🎉 All tests passed! LyricMatch is fully functional.")
+        print("🎉 All tests passed! WaveSeek is fully functional.")
         print("\n📋 You can now:")
         print("   • Process audio files: python main.py <audio_file>")
         print("   • Start the API: python api.py")

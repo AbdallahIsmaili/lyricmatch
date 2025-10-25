@@ -1,6 +1,6 @@
-# LyricMatch Tests
+# WaveSeek Tests
 
-This directory contains all test scripts for the LyricMatch project.
+This directory contains all test scripts for the WaveSeek project.
 
 ## Test Files
 
@@ -133,7 +133,7 @@ Requires:
 ### ✅ All Tests Pass
 ```
 Results: 5/5 tests passed
-🎉 All tests passed! LyricMatch is ready to use.
+🎉 All tests passed! WaveSeek is ready to use.
 ```
 
 ### ⚠️ Some Tests Fail

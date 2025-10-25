@@ -1,5 +1,5 @@
 """
-Test script to verify LyricMatch setup
+Test script to verify WaveSeek setup
 Run this to ensure all components are working
 """
 import sys
@@ -150,7 +150,7 @@ def main():
     """Run all tests"""
     print("\n")
     print("╔" + "="*58 + "╗")
-    print("║" + " "*15 + "LYRICMATCH SETUP TEST" + " "*22 + "║")
+    print("║" + " "*15 + "WAVESEEK SETUP TEST" + " "*22 + "║")
     print("╚" + "="*58 + "╝")
     
     tests = [
@@ -187,7 +187,7 @@ def main():
     print(f"{'='*60}\n")
     
     if passed == total:
-        print("🎉 All tests passed! LyricMatch is ready to use.")
+        print("🎉 All tests passed! WaveSeek is ready to use.")
         print("\n📋 Next steps:")
         print("   1. Add some test audio files to: data/audio_samples/")
         print("   2. Prepare a lyrics database: python setup_database.py")
