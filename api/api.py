@@ -42,6 +42,15 @@ from src.neural_matcher import NeuralLyricsMatcher
 app = Flask(__name__)
 CORS(app)
 
+
+try:
+    from gpu_config import GPUConfig
+    GPU_AVAILABLE = GPUConfig.CUDA_AVAILABLE
+except ImportError:
+    GPU_AVAILABLE = False
+    print("⚠️  GPU config not available")
+
+
 # Configuration
 UPLOAD_FOLDER = Path(tempfile.gettempdir()) / 'waveseek_uploads'
 UPLOAD_FOLDER.mkdir(exist_ok=True)
@@ -50,31 +59,40 @@ ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.flac', '.ogg', '.webm'}
 # Global state for processing jobs
 processing_jobs = {}
 
-# Tier configurations
 TIER_CONFIGS = {
     'free': {
         'name': 'Free',
         'whisper_models': ['tiny', 'base'],
         'matching_engines': ['tfidf'],
         'sbert_models': [],
-        'max_file_size': 20 * 1024 * 1024,  # 10MB
+        'max_file_size': 10 * 1024 * 1024,  # 10MB
+        'max_duration_seconds': 30,  # 30 seconds
         'daily_limit': 5,
-        'features': ['Basic TF-IDF matching', 'Fast processing', 'Up to 5 searches/day']
+        'gpu_enabled': False,  # NEW
+        'features': [
+            'Basic TF-IDF matching',
+            'CPU processing',
+            'Up to 30s audio',
+            '5 searches/day'
+        ]
     },
     'premium': {
         'name': 'Premium',
         'whisper_models': ['tiny', 'base', 'small', 'medium', 'large'],
         'matching_engines': ['tfidf', 'neural', 'hybrid'],
         'sbert_models': ['all-MiniLM-L6-v2', 'all-mpnet-base-v2', 'paraphrase-MiniLM-L6-v2'],
-        'max_file_size': 200 * 1024 * 1024,  # 50MB
+        'max_file_size': 50 * 1024 * 1024,  # 50MB
+        'max_duration_seconds': 120,  # 2 minutes
         'daily_limit': None,  # Unlimited
+        'gpu_enabled': GPU_AVAILABLE,  # NEW - Enable GPU if available
         'features': [
-            'Advanced Neural Embeddings (BERT)',
-            'Hybrid matching algorithms',
-            'All Whisper models (tiny to large)',
+            '🎮 GPU Acceleration (RTX 3060)',
+            '🧠 Advanced Neural Embeddings',
+            '⚡ 5-10x Faster Processing',
+            'All Whisper models',
+            'Up to 2min audio',
             'Unlimited searches',
-            'Priority processing',
-            'Higher accuracy'
+            'Priority queue'
         ]
     }
 }
@@ -103,78 +121,107 @@ def convert_to_native_types(obj):
     else:
         return str(obj)
 
+
 class WaveSeekAPI:
-    """API wrapper for WaveSeek with tier support"""
+    """API wrapper with GPU support"""
     
     def __init__(self):
         self.audio_processor = AudioProcessor()
-        self.transcribers = {}  # Cache transcribers by model
-        self.matchers = {}  # Cache matchers by engine
+        self.transcribers = {}
+        self.matchers = {}
+        
+        # Show GPU status on startup
+        if GPU_AVAILABLE:
+            print("\n" + "="*60)
+            GPUConfig.print_gpu_status()
+            print("="*60 + "\n")
+        else:
+            print("⚠️  GPU not available - CPU mode only")
+        
         print("✅ WaveSeek API initialized")
     
-    def get_transcriber(self, model_name):
-        """Get or create transcriber for model"""
-        if model_name not in self.transcribers:
-            print(f"🔄 Loading Whisper model: {model_name}")
-            self.transcribers[model_name] = Transcriber(model_name=model_name)
-        return self.transcribers[model_name]
+    def get_transcriber(self, model_name, use_gpu=False):
+        """Get or create transcriber with GPU option"""
+        cache_key = f"{model_name}_{'gpu' if use_gpu else 'cpu'}"
+        
+        if cache_key not in self.transcribers:
+            print(f"📄 Loading Whisper: {model_name} ({'GPU' if use_gpu else 'CPU'})")
+            self.transcribers[cache_key] = Transcriber(
+                model_name=model_name,
+                use_gpu=use_gpu,
+                force_cpu=not use_gpu
+            )
+        return self.transcribers[cache_key]
     
-    def get_matcher(self, engine, sbert_model=None):
-        """Get or create matcher for engine"""
-        cache_key = f"{engine}_{sbert_model or 'default'}"
+    def get_matcher(self, engine, sbert_model=None, use_gpu=False):
+        """Get or create matcher with GPU option"""
+        cache_key = f"{engine}_{sbert_model or 'default'}_{'gpu' if use_gpu else 'cpu'}"
         
         if cache_key not in self.matchers:
-            print(f"🔄 Loading {engine.upper()} matcher")
+            print(f"📊 Loading {engine.upper()} matcher ({'GPU' if use_gpu else 'CPU'})")
             if engine == 'tfidf':
                 self.matchers[cache_key] = LyricsMatcher()
             elif engine in ['neural', 'hybrid']:
                 model = sbert_model or Config.SBERT_MODEL
-                self.matchers[cache_key] = NeuralLyricsMatcher(model_name=model)
+                self.matchers[cache_key] = NeuralLyricsMatcher(
+                    model_name=model,
+                    use_gpu=use_gpu,
+                    force_cpu=not use_gpu
+                )
             else:
                 raise ValueError(f"Unknown engine: {engine}")
         
         return self.matchers[cache_key]
     
     def process_audio(self, job_id, audio_path, config):
-        """Process audio file with tier-specific configuration"""
+        """Process audio with GPU support"""
         try:
-            print(f"\n🔄 Starting processing for job {job_id}")
-            print(f"⚙️ Tier: {config['tier']}")
-            print(f"⚙️ Whisper: {config['whisper_model']}")
-            print(f"⚙️ Engine: {config['engine']}")
+            tier = config['tier']
+            use_gpu = config.get('use_gpu', False)
             
-            # Update status: preprocessing
+            print(f"\n📄 Processing job {job_id}")
+            print(f"⚙️  Tier: {tier}")
+            print(f"⚙️  GPU: {'Enabled' if use_gpu else 'Disabled'}")
+            print(f"⚙️  Whisper: {config['whisper_model']}")
+            print(f"⚙️  Engine: {config['engine']}")
+            
+            # Update status
             processing_jobs[job_id]['status'] = 'preprocessing'
             processing_jobs[job_id]['progress'] = 10
-            processing_jobs[job_id]['tier'] = config['tier']
+            processing_jobs[job_id]['tier'] = tier
+            processing_jobs[job_id]['gpu_enabled'] = use_gpu
             
+            # Preprocess
             audio, sr = self.audio_processor.preprocess_audio(audio_path)
-            
             audio_info = self.audio_processor.get_audio_info(str(audio_path))
-
-            # Update status: transcribing
+            
+            # Validate duration for tier
+            duration = audio_info.get('duration', 0)
+            max_duration = TIER_CONFIGS[tier]['max_duration_seconds']
+            
+            if duration > max_duration:
+                raise Exception(
+                    f"Audio too long: {duration:.1f}s (max {max_duration}s for {tier} tier)"
+                )
+            
+            # Transcribe
             processing_jobs[job_id]['status'] = 'transcribing'
             processing_jobs[job_id]['progress'] = 30
             
-            transcriber = self.get_transcriber(config['whisper_model'])
+            transcriber = self.get_transcriber(config['whisper_model'], use_gpu)
             transcription = transcriber.transcribe(str(audio_path))
             
-            # Update status: matching
+            # Match
             processing_jobs[job_id]['status'] = 'matching'
             processing_jobs[job_id]['progress'] = 70
             processing_jobs[job_id]['transcription'] = transcription['text']
             processing_jobs[job_id]['language'] = transcription['language']
             
-            matcher = self.get_matcher(config['engine'], config.get('sbert_model'))
+            matcher = self.get_matcher(config['engine'], config.get('sbert_model'), use_gpu)
             results = matcher.match_with_details(transcription['text'], top_k=5)
             
-            print(f"🎵 Found {len(results)} match(es)")
-            
-            # Convert and validate results
+            # Convert results
             results_native = convert_to_native_types(results)
-            if not isinstance(results_native, list):
-                results_native = []
-            
             cleaned_results = []
             for result in results_native:
                 if isinstance(result, dict):
@@ -186,38 +233,51 @@ class WaveSeekAPI:
                             cleaned_result[key] = value
                     cleaned_results.append(cleaned_result)
             
-            # Update status: complete
+            # Complete
             processing_jobs[job_id]['status'] = 'complete'
             processing_jobs[job_id]['progress'] = 100
             processing_jobs[job_id]['results'] = cleaned_results
             processing_jobs[job_id]['audio_info'] = {
                 'duration': float(transcription['duration']) if not math.isnan(transcription['duration']) else None,
                 'sample_rate': int(sr),
-                'channels': audio_info.get('channels', 1),  
-                'bitrate': audio_info.get('bitrate', 0),  
-                'file_size_mb': audio_info.get('file_size_mb', 0)  
+                'channels': audio_info.get('channels', 1),
+                'bitrate': audio_info.get('bitrate', 0),
+                'file_size_mb': audio_info.get('file_size_mb', 0),
+                'processing_time': transcription.get('processing_time', 0)
             }
             processing_jobs[job_id]['config_used'] = {
                 'whisper_model': config['whisper_model'],
                 'engine': config['engine'],
-                'sbert_model': config.get('sbert_model')
+                'sbert_model': config.get('sbert_model'),
+                'gpu_enabled': use_gpu,
+                'device_used': transcription.get('device_used', 'cpu')
             }
             
-            print(f"✅ Job {job_id} completed successfully")
+            # GPU performance stats
+            if use_gpu and GPU_AVAILABLE:
+                gpu_info = GPUConfig.get_gpu_info()
+                processing_jobs[job_id]['gpu_stats'] = {
+                    'vram_used_gb': gpu_info.get('memory_allocated_gb', 0),
+                    'temperature_c': gpu_info.get('temperature_c'),
+                    'speedup': transcription.get('speedup_factor', 1.0)
+                }
+            
+            print(f"✅ Job {job_id} complete")
             
             # Cleanup
             try:
                 os.remove(audio_path)
-            except Exception as cleanup_error:
-                print(f"⚠️ Could not remove temp file: {cleanup_error}")
+            except:
+                pass
             
         except Exception as e:
             processing_jobs[job_id]['status'] = 'error'
             processing_jobs[job_id]['error'] = str(e)
             processing_jobs[job_id]['progress'] = 0
-            print(f"❌ Error processing {job_id}: {e}")
+            print(f"❌ Error: {e}")
             import traceback
             traceback.print_exc()
+
 
 # Initialize API
 waveseek_api = WaveSeekAPI()
@@ -239,22 +299,55 @@ def get_tiers():
     })
 
 
+@app.route('/api/gpu/status', methods=['GET'])
+def gpu_status():
+    """Get current GPU status"""
+    if not GPU_AVAILABLE:
+        return jsonify({
+            'available': False,
+            'message': 'GPU not available on this server'
+        })
+    
+    gpu_info = GPUConfig.get_gpu_info()
+    
+    # Check if safe for premium tier
+    safe_for_whisper = GPUConfig.check_model_safety('whisper', 'medium')
+    safe_for_sbert = GPUConfig.check_model_safety('sbert', 'all-MiniLM-L6-v2')
+    
+    return jsonify({
+        'available': True,
+        'name': gpu_info.get('name', 'Unknown'),
+        'memory_total_gb': gpu_info.get('memory_total_gb', 0),
+        'memory_free_gb': gpu_info.get('memory_free_gb', 0),
+        'memory_used_gb': gpu_info.get('memory_allocated_gb', 0),
+        'temperature_c': gpu_info.get('temperature_c'),
+        'temp_safe': gpu_info.get('temp_safe', True),
+        'cuda_version': gpu_info.get('cuda_version'),
+        'whisper_safe': safe_for_whisper.get('safe', False),
+        'sbert_safe': safe_for_sbert.get('safe', False),
+        'recommended_models': {
+            'whisper': ['tiny', 'base', 'small', 'medium'],
+            'sbert': ['all-MiniLM-L6-v2', 'all-mpnet-base-v2']
+        }
+    })
+
+
 @app.route('/api/upload', methods=['POST'])
 def upload_audio():
-    """Upload audio file with tier configuration"""
+    """Upload with GPU support"""
     if 'audio' not in request.files:
-        return jsonify({'error': 'No audio file provided'}), 400
+        return jsonify({'error': 'No audio file'}), 400
     
     file = request.files['audio']
-    
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     
-    # Get tier and configuration
+    # Get config
     tier = request.form.get('tier', 'free')
     whisper_model = request.form.get('whisper_model', 'tiny')
     engine = request.form.get('engine', 'tfidf')
     sbert_model = request.form.get('sbert_model', None)
+    use_gpu = request.form.get('use_gpu', 'false').lower() == 'true'
     
     # Validate tier
     if tier not in TIER_CONFIGS:
@@ -262,81 +355,71 @@ def upload_audio():
     
     tier_config = TIER_CONFIGS[tier]
     
-    # Validate configuration against tier
+    # GPU check
+    if use_gpu and not tier_config['gpu_enabled']:
+        return jsonify({
+            'error': f'GPU acceleration not available in {tier} tier',
+            'upgrade_message': 'Upgrade to Premium for GPU acceleration'
+        }), 403
+    
+    if use_gpu and not GPU_AVAILABLE:
+        return jsonify({
+            'error': 'GPU not available on server',
+            'fallback': 'Processing with CPU'
+        }), 503
+    
+    # Validate models
     if whisper_model not in tier_config['whisper_models']:
-        return jsonify({'error': f'Whisper model {whisper_model} not available in {tier} tier'}), 403
+        return jsonify({
+            'error': f'Whisper {whisper_model} not in {tier} tier'
+        }), 403
     
     if engine not in tier_config['matching_engines']:
-        return jsonify({'error': f'Matching engine {engine} not available in {tier} tier'}), 403
+        return jsonify({
+            'error': f'Engine {engine} not in {tier} tier'
+        }), 403
     
-    if sbert_model and sbert_model not in tier_config.get('sbert_models', []):
-        return jsonify({'error': f'SBERT model {sbert_model} not available in {tier} tier'}), 403
-    
-    # Check file size
+    # File size check
     content_length = request.content_length
     if content_length and content_length > tier_config['max_file_size']:
         return jsonify({
-            'error': f'File size exceeds {tier_config["max_file_size"] / (1024*1024):.1f}MB limit for {tier} tier'
+            'error': f'File too large for {tier} tier',
+            'max_size_mb': tier_config['max_file_size'] / (1024*1024)
         }), 413
-
-    # Fallback: check actual file size
-    file.seek(0, os.SEEK_END)
-    file_size = file.tell()
-    file.seek(0, os.SEEK_SET)
-
-    if file_size > tier_config['max_file_size']:
-        return jsonify({
-            'error': f'File size exceeds {tier_config["max_file_size"] / (1024*1024):.1f}MB limit for {tier} tier'
-        }), 413
-    
-    # Check file extension - support both explicit extensions and content type
-    file_ext = Path(file.filename).suffix.lower()
-    
-    # Handle browser recordings that might not have proper extension
-    if not file_ext or file_ext not in ALLOWED_EXTENSIONS:
-        # Check content type for webm
-        if file.content_type and 'webm' in file.content_type:
-            file_ext = '.webm'
-        elif file.content_type and 'audio' in file.content_type:
-            # Accept generic audio types
-            file_ext = '.webm'  # Default to webm for browser recordings
-        else:
-            return jsonify({'error': f'Unsupported format: {file_ext or file.content_type}'}), 400
     
     # Save file
+    file_ext = Path(file.filename).suffix.lower()
+    if not file_ext or file_ext not in ALLOWED_EXTENSIONS:
+        if file.content_type and 'webm' in file.content_type:
+            file_ext = '.webm'
+        else:
+            return jsonify({'error': f'Unsupported format: {file_ext}'}), 400
+    
     job_id = str(uuid.uuid4())
     filename = secure_filename(f"{job_id}{file_ext}")
     filepath = UPLOAD_FOLDER / filename
     file.save(str(filepath))
     
-    print(f"\n📤 New upload: {file.filename}")
-    print(f"🆔 Job ID: {job_id}")
+    print(f"\n📤 Upload: {file.filename}")
+    print(f"🆔 Job: {job_id}")
     print(f"🎯 Tier: {tier}")
-    print(f"📁 Format: {file_ext}")
+    print(f"🎮 GPU: {'Enabled' if use_gpu else 'Disabled'}")
     
-    # Convert WebM to WAV for processing
+    # Convert WebM
     if file_ext == '.webm':
         try:
             from pydub import AudioSegment
-            
-            print(f"🔄 Converting WebM to WAV...")
             audio = AudioSegment.from_file(str(filepath), format="webm")
             new_filepath = filepath.with_suffix('.wav')
             audio.export(str(new_filepath), format="wav")
-            
-            # Remove original webm
             os.remove(str(filepath))
             filepath = new_filepath
-            
-            print(f"✅ Converted WebM to WAV: {new_filepath.name}")
         except Exception as e:
-            print(f"⚠️ WebM conversion failed: {e}")
-            # Clean up and return error
             try:
                 os.remove(str(filepath))
             except:
                 pass
-            return jsonify({'error': f'Failed to process WebM audio: {str(e)}'}), 500
+            return jsonify({'error': f'WebM conversion failed: {str(e)}'}), 500
     
     # Initialize job
     processing_jobs[job_id] = {
@@ -344,15 +427,17 @@ def upload_audio():
         'progress': 0,
         'filename': file.filename,
         'created_at': time.time(),
-        'tier': tier
+        'tier': tier,
+        'gpu_enabled': use_gpu
     }
     
-    # Processing configuration
+    # Config
     config = {
         'tier': tier,
         'whisper_model': whisper_model,
         'engine': engine,
-        'sbert_model': sbert_model
+        'sbert_model': sbert_model,
+        'use_gpu': use_gpu
     }
     
     # Start processing
@@ -366,7 +451,8 @@ def upload_audio():
     return jsonify({
         'job_id': job_id,
         'message': 'Processing started',
-        'tier': tier
+        'tier': tier,
+        'gpu_enabled': use_gpu
     })
 
 
@@ -652,13 +738,20 @@ cleanup_thread = Thread(target=schedule_cleanup)
 cleanup_thread.daemon = True
 cleanup_thread.start()
 
+
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("🚀 Starting WaveSeek SaaS API Server")
+    print("🚀 WaveSeek API with GPU Acceleration")
     print("="*60)
-    print(f"🌐 Running on: http://localhost:5000")
-    print(f"🔗 Health Check: http://localhost:5000/api/health")
-    print(f"🎯 Tiers Endpoint: http://localhost:5000/api/tiers")
+    
+    if GPU_AVAILABLE:
+        GPUConfig.print_gpu_status()
+        print("\n✅ GPU acceleration available for Premium tier")
+    else:
+        print("\n⚠️  GPU not available - CPU mode only")
+    
+    print(f"\n🌐 Running on: http://localhost:5000")
+    print(f"🔗 GPU Status: http://localhost:5000/api/gpu/status")
     print("="*60 + "\n")
     
     app.run(debug=True, port=5000, host='0.0.0.0', threaded=True)

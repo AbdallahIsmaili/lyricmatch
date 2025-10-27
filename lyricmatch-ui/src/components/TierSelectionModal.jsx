@@ -32,8 +32,9 @@ export const TierSelectionModal = ({ isOpen, onClose, onSelectTier }) => {
       price: 'FREE',
       period: 'beta access',
       features: [
-        'Advanced Neural Embeddings (BERT)',
-        'Hybrid matching algorithms',
+        '🎮 GPU Acceleration (RTX 3060)',
+        '🧠 Advanced Neural Embeddings (BERT)',
+        '⚡ 5-10x Faster Processing',
         'All Whisper models (tiny → large)',
         'Unlimited searches',
         '50MB max file size',

@@ -37,6 +37,11 @@ export const getStats = async () => {
   return response.data;
 };
 
+export const getGPUStatus = async () => {
+  const response = await api.get('/gpu/status');
+  return response.data;
+};
+
 export const healthCheck = async () => {
   const response = await api.get('/health');
   return response.data;
@@ -49,11 +54,12 @@ export const uploadAudio = async (file, config, tier) => {
   formData.append('tier', tier);
   formData.append('whisper_model', config.whisper_model);
   formData.append('engine', config.engine);
+  formData.append('use_gpu', config.use_gpu || 'false'); // ADD THIS LINE
   if (config.sbert_model) {
     formData.append('sbert_model', config.sbert_model);
   }
   
-  const response = await fetch(`${API_BASE}/upload`, {
+  const response = await fetch(`${API_BASE_URL}/upload`, {
     method: 'POST',
     body: formData,
   });
@@ -65,15 +71,16 @@ export const uploadAudio = async (file, config, tier) => {
   return response.json();
 };
 
+
 export const getJobStatus = async (jobId) => {
-  const response = await fetch(`${API_BASE}/status/${jobId}`);
+  const response = await fetch(`${API_BASE_URL}/status/${jobId}`);
   if (!response.ok) throw new Error('Status check failed');
   return response.json();
 };
 
 export const fetchSpotifyTrack = async (artist, title) => {
   try {
-    const response = await fetch(`${API_BASE}/spotify/search`, {
+    const response = await fetch(`${API_BASE_URL}/spotify/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ artist, title })
@@ -91,7 +98,7 @@ export const fetchSpotifyTrack = async (artist, title) => {
 
 export const fetchYouTubeVideo = async (artist, title) => {
   try {
-    const response = await fetch(`${API_BASE}/youtube/search`, {
+    const response = await fetch(`${API_BASE_URL}/youtube/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ artist, title })
@@ -107,7 +114,7 @@ export const fetchYouTubeVideo = async (artist, title) => {
 };
 
 export const fetchArtistSongs = async (artistName) => {
-  const response = await fetch(`${API_BASE}/lyrics/fetch-artist`, {
+  const response = await fetch(`${API_BASE_URL}/lyrics/fetch-artist`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ artist_name: artistName })
@@ -121,3 +128,4 @@ export const fetchArtistSongs = async (artistName) => {
   
   return data;
 };
+

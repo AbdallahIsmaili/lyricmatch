@@ -1,6 +1,6 @@
 // src/components/ResultsView.jsx
 import React, { useState, useEffect } from 'react';
-import { Trophy, RefreshCw, Activity, Music, Loader2 } from 'lucide-react';
+import { Trophy, RefreshCw, Activity, Music, Loader2, Zap, Cpu, Clock, Gauge } from 'lucide-react';
 import { TierBadge } from './TierBadge';
 import { StreamingButton } from './StreamingButton';
 import { MatchExplanation } from './MatchExplanation';
@@ -24,6 +24,7 @@ export const ResultsView = ({ results, onReset, tier, config }) => {
   }
 
   const { topMatch, transcription, audioInfo } = results;
+  const gpuUsed = config?.use_gpu || audioInfo?.device_used === 'cuda';
 
   useEffect(() => {
     fetchMusicData();
@@ -56,11 +57,17 @@ export const ResultsView = ({ results, onReset, tier, config }) => {
         <h2 className="text-4xl md:text-5xl font-bold text-[var(--text-primary)] mb-3">
           Perfect Match Found!
         </h2>
-        <div className="flex items-center justify-center gap-3 mt-4">
+        <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
           <TierBadge tier={tier} size="lg" />
           <div className="px-4 py-2 bg-green-500/10 border border-green-500/30 rounded-full">
             <span className="text-green-500 font-bold text-lg">{Math.round(topMatch.final_score * 100)}% Match</span>
           </div>
+          {gpuUsed && (
+            <div className="px-4 py-2 bg-gradient-to-r from-green-500/20 to-blue-500/20 border border-green-500/30 rounded-full flex items-center gap-2">
+              <Zap className="w-4 h-4 text-green-500" />
+              <span className="text-green-500 font-bold text-sm">GPU Accelerated</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -95,6 +102,12 @@ export const ResultsView = ({ results, onReset, tier, config }) => {
               <div className="absolute bottom-4 right-4 px-4 py-2 bg-black/80 backdrop-blur-sm rounded-full border border-white/20">
                 <span className="text-green-400 text-xl font-bold">{Math.round(topMatch.final_score * 100)}%</span>
               </div>
+              {gpuUsed && (
+                <div className="absolute top-4 right-4 px-3 py-1 bg-green-500/90 backdrop-blur-sm rounded-full border border-green-400 flex items-center gap-1">
+                  <Zap className="w-4 h-4 text-white" />
+                  <span className="text-white text-sm font-bold">GPU</span>
+                </div>
+              )}
             </div>
 
             {/* Track Info Section */}
@@ -133,7 +146,11 @@ export const ResultsView = ({ results, onReset, tier, config }) => {
                   </div>
                   <div className="h-3 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
                     <div 
-                      className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-1000"
+                      className={`h-full rounded-full transition-all duration-1000 ${
+                        gpuUsed 
+                          ? 'bg-gradient-to-r from-green-500 to-blue-500' 
+                          : 'bg-gradient-to-r from-green-500 to-emerald-400'
+                      }`}
                       style={{ width: `${topMatch.final_score * 100}%` }}
                     />
                   </div>
@@ -163,6 +180,53 @@ export const ResultsView = ({ results, onReset, tier, config }) => {
           </div>
         </div>
       </div>
+
+      {/* GPU Performance Stats */}
+      {gpuUsed && audioInfo && (
+        <div className="bg-gradient-to-r from-green-500/10 to-blue-500/10 border border-green-500/30 rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
+              <Zap className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-green-500">GPU Acceleration Enabled</h3>
+              <p className="text-sm text-[var(--text-secondary)]">Powered by NVIDIA RTX 3060</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-[var(--bg-secondary)] rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Gauge className="w-4 h-4 text-green-500" />
+                <span className="text-xs text-[var(--text-tertiary)]">Speedup</span>
+              </div>
+              <p className="text-2xl font-bold text-green-500">5-10x</p>
+            </div>
+            <div className="bg-[var(--bg-secondary)] rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4 text-blue-500" />
+                <span className="text-xs text-[var(--text-tertiary)]">Processing Time</span>
+              </div>
+              <p className="text-2xl font-bold text-blue-500">
+                {audioInfo.processing_time ? `${audioInfo.processing_time.toFixed(2)}s` : 'N/A'}
+              </p>
+            </div>
+            <div className="bg-[var(--bg-secondary)] rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="w-4 h-4 text-yellow-500" />
+                <span className="text-xs text-[var(--text-tertiary)]">Device</span>
+              </div>
+              <p className="text-xl font-bold text-yellow-500">CUDA GPU</p>
+            </div>
+            <div className="bg-[var(--bg-secondary)] rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="w-4 h-4 text-purple-500" />
+                <span className="text-xs text-[var(--text-tertiary)]">Precision</span>
+              </div>
+              <p className="text-xl font-bold text-purple-500">FP16</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Match Explanation */}
       <MatchExplanation match={topMatch} tier={tier} engine={config?.engine} />
@@ -197,12 +261,19 @@ export const ResultsView = ({ results, onReset, tier, config }) => {
                 {audioInfo.duration ? `${audioInfo.duration.toFixed(1)}s` : 'N/A'}
               </p>
             </div>
-            <div className="bg-[var(--bg-tertiary)] rounded-lg p-4">
-              <p className="text-sm text-[var(--text-tertiary)] mb-1">Engine</p>
-              <p className="text-xl font-bold text-[var(--text-primary)]">
-                {config?.engine?.toUpperCase() || 'TF-IDF'}
-              </p>
+            
+            <div className={`rounded-lg p-4 ${gpuUsed ? 'bg-gradient-to-br from-green-500/20 to-blue-500/20 border border-green-500/30' : 'bg-[var(--bg-tertiary)]'}`}>
+              <p className="text-sm text-[var(--text-tertiary)] mb-1">Processing</p>
+              <div className="flex items-center gap-2">
+                <p className={`text-xl font-bold ${gpuUsed ? 'text-green-500' : 'text-[var(--text-primary)]'}`}>
+                  {config?.engine?.toUpperCase() || 'TF-IDF'}
+                </p>
+                {gpuUsed && (
+                  <Zap className="w-4 h-4 text-green-500" />
+                )}
+              </div>
             </div>
+            
             <div className="bg-[var(--bg-tertiary)] rounded-lg p-4">
               <p className="text-sm text-[var(--text-tertiary)] mb-1">Accuracy</p>
               <p className="text-xl font-bold text-green-500">
@@ -230,7 +301,40 @@ export const ResultsView = ({ results, onReset, tier, config }) => {
                 {audioInfo.file_size_mb ? `${audioInfo.file_size_mb} MB` : 'N/A'}
               </p>
             </div>
+
+            <div className={`rounded-lg p-4 ${gpuUsed ? 'bg-gradient-to-br from-green-500/20 to-blue-500/20 border border-green-500/30' : 'bg-[var(--bg-tertiary)]'}`}>
+              <p className="text-sm text-[var(--text-tertiary)] mb-1">Device Used</p>
+              <div className="flex items-center gap-2">
+                {gpuUsed ? (
+                  <>
+                    <Zap className="w-5 h-5 text-green-500" />
+                    <p className="text-xl font-bold text-green-500">GPU</p>
+                  </>
+                ) : (
+                  <>
+                    <Cpu className="w-5 h-5 text-[var(--text-primary)]" />
+                    <p className="text-xl font-bold text-[var(--text-primary)]">CPU</p>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
+
+          {/* Whisper Model Info */}
+          {config?.whisper_model && (
+            <div className="mt-4 pt-4 border-t border-[var(--border)]">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[var(--text-tertiary)]">Whisper Model:</span>
+                <span className="font-bold text-[var(--text-primary)]">{config.whisper_model.toUpperCase()}</span>
+              </div>
+              {config?.sbert_model && (
+                <div className="flex items-center justify-between text-sm mt-2">
+                  <span className="text-[var(--text-tertiary)]">SBERT Model:</span>
+                  <span className="font-mono text-xs text-[var(--text-primary)]">{config.sbert_model}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

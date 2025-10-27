@@ -1,15 +1,40 @@
 // ============================================
 // src/components/ConfigModal.jsx
 // ============================================
-import React, { useState } from 'react';
-import { Settings, Lock, Crown, Star, Rocket, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Settings, Lock, Crown, Star, Rocket, Sparkles, X ,Loader2} from 'lucide-react';
 import { TierBadge } from './TierBadge';
+import { getGPUStatus } from '../utils/api';
 
 export const ConfigModal = ({ isOpen, onClose, onStart, currentTier, onChangeTier }) => {
+
+  const [gpuStatus, setGpuStatus] = useState(null);
+  const [loadingGPU, setLoadingGPU] = useState(true);
+
+  useEffect(() => {
+    if (isOpen && currentTier === 'premium') {
+      fetchGPUStatus();
+    }
+  }, [isOpen, currentTier]);
+
+  const fetchGPUStatus = async () => {
+    setLoadingGPU(true);
+    try {
+      const status = await getGPUStatus();
+      setGpuStatus(status);
+    } catch (error) {
+      console.error('Failed to fetch GPU status:', error);
+      setGpuStatus({ available: false });
+    } finally {
+      setLoadingGPU(false);
+    }
+  };
+
   const [config, setConfig] = useState({
     whisper_model: 'tiny',
     engine: 'tfidf',
-    sbert_model: 'all-MiniLM-L6-v2'
+    sbert_model: 'all-MiniLM-L6-v2',
+    use_gpu: false  // ADD THIS
   });
 
   const tiers = {
@@ -130,6 +155,105 @@ export const ConfigModal = ({ isOpen, onClose, onStart, currentTier, onChangeTie
               })}
             </div>
           </div>
+
+          {/* GPU Acceleration Toggle (Premium Only) */}
+          {currentTier === 'premium' && (
+            <div className="mb-8">
+              <h3 className="text-xl font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+                <Rocket className="w-5 h-5" />
+                GPU Acceleration
+                {loadingGPU && <Loader2 className="w-4 h-4 animate-spin" />}
+              </h3>
+              
+              {gpuStatus?.available ? (
+                <div className="space-y-4">
+                  {/* GPU Info Card */}
+                  <div className="bg-gradient-to-r from-green-500/10 to-blue-500/10 border border-green-500/30 rounded-xl p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h4 className="text-lg font-bold text-green-500 mb-1">
+                          🎮 GPU Available: {gpuStatus.name}
+                        </h4>
+                        <p className="text-sm text-[var(--text-secondary)]">
+                          {gpuStatus.memory_free_gb?.toFixed(1)}GB free / {gpuStatus.memory_total_gb?.toFixed(1)}GB total
+                        </p>
+                      </div>
+                      {gpuStatus.temperature_c && (
+                        <div className={`px-3 py-1 rounded-full text-sm font-bold ${
+                          gpuStatus.temp_safe 
+                            ? 'bg-green-500/20 text-green-500' 
+                            : 'bg-red-500/20 text-red-500'
+                        }`}>
+                          🌡️ {gpuStatus.temperature_c}°C
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* GPU Toggle */}
+                    <label className="flex items-center justify-between p-4 bg-[var(--bg-secondary)] rounded-lg cursor-pointer hover:bg-[var(--bg-tertiary)] transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-12 h-6 rounded-full transition-all relative ${
+                          config.use_gpu 
+                            ? 'bg-gradient-to-r from-green-500 to-blue-500' 
+                            : 'bg-[var(--border)]'
+                        }`}>
+                          <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                            config.use_gpu ? 'translate-x-6' : ''
+                          }`} />
+                        </div>
+                        <div>
+                          <span className="font-bold text-[var(--text-primary)]">
+                            Enable GPU Acceleration
+                          </span>
+                          <p className="text-sm text-[var(--text-secondary)]">
+                            5-10x faster processing with {gpuStatus.name}
+                          </p>
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={config.use_gpu}
+                        onChange={(e) => setConfig(prev => ({ ...prev, use_gpu: e.target.checked }))}
+                        className="sr-only"
+                      />
+                    </label>
+                    
+                    {/* Performance Estimate */}
+                    {config.use_gpu && (
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <div className="bg-[var(--bg-tertiary)] rounded-lg p-3">
+                          <div className="text-xs text-[var(--text-tertiary)] mb-1">Whisper Speed</div>
+                          <div className="text-lg font-bold text-green-500">⚡ 3-5x faster</div>
+                        </div>
+                        <div className="bg-[var(--bg-tertiary)] rounded-lg p-3">
+                          <div className="text-xs text-[var(--text-tertiary)] mb-1">Neural Matching</div>
+                          <div className="text-lg font-bold text-blue-500">⚡ 5-10x faster</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Safety Warning */}
+                  {!gpuStatus.temp_safe && (
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                      <p className="text-red-500 font-semibold">
+                        ⚠️ GPU temperature is high. GPU acceleration temporarily disabled for safety.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-6 text-center">
+                  <p className="text-[var(--text-secondary)] mb-2">
+                    🖥️ GPU not available on this server
+                  </p>
+                  <p className="text-sm text-[var(--text-tertiary)]">
+                    Processing will use CPU (still fast!)
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Matching Engine Selection */}
           <div className="mb-8">
