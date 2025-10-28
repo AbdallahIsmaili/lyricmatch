@@ -65,7 +65,7 @@ TIER_CONFIGS = {
         'whisper_models': ['tiny', 'base'],
         'matching_engines': ['tfidf'],
         'sbert_models': [],
-        'max_file_size': 10 * 1024 * 1024,  # 10MB
+        'max_file_size': 20 * 1024 * 1024,  # 20MB
         'max_duration_seconds': 30,  # 30 seconds
         'daily_limit': 5,
         'gpu_enabled': False,  # NEW
@@ -81,8 +81,8 @@ TIER_CONFIGS = {
         'whisper_models': ['tiny', 'base', 'small', 'medium', 'large'],
         'matching_engines': ['tfidf', 'neural', 'hybrid'],
         'sbert_models': ['all-MiniLM-L6-v2', 'all-mpnet-base-v2', 'paraphrase-MiniLM-L6-v2'],
-        'max_file_size': 50 * 1024 * 1024,  # 50MB
-        'max_duration_seconds': 120,  # 2 minutes
+        'max_file_size': 200 * 1024 * 1024,  # 200MB
+        'max_duration_seconds': 180,  # 3 minutes
         'daily_limit': None,  # Unlimited
         'gpu_enabled': GPU_AVAILABLE,  # NEW - Enable GPU if available
         'features': [
