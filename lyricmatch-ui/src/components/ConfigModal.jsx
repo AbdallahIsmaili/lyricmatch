@@ -1,8 +1,8 @@
 // ============================================
-// src/components/ConfigModal.jsx - Professional SaaS Design
+// src/components/ConfigModal.jsx - Enhanced with Matching Methods
 // ============================================
 import React, { useEffect, useState } from 'react';
-import { Settings, Lock, Crown, Rocket, Sparkles, X, Loader2, Zap, Cpu, ChevronRight, Check, Info, Gauge, Clock, Activity } from 'lucide-react';
+import { Settings, Lock, Crown, Rocket, Sparkles, Radio, X, Loader2, Zap, Cpu, ChevronRight, Check, Info, Gauge, Clock, Activity, AlertCircle, Database, TrendingUp } from 'lucide-react';
 
 // Mock API for demo
 const getGPUStatus = async () => {
@@ -18,6 +18,15 @@ const getGPUStatus = async () => {
       });
     }, 1000);
   });
+};
+
+const getFingerprintStatus = async () => {
+  try {
+    const response = await fetch('http://localhost:5000/api/fingerprint/status');
+    return await response.json();
+  } catch (error) {
+    return { available: false, songs_indexed: 0 };
+  }
 };
 
 const TierBadge = ({ tier, size = 'sm' }) => {
@@ -39,11 +48,14 @@ const TierBadge = ({ tier, size = 'sm' }) => {
 export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () => {}, currentTier = 'premium', onChangeTier = () => {} }) => {
   const [gpuStatus, setGpuStatus] = useState(null);
   const [loadingGPU, setLoadingGPU] = useState(true);
+  const [fingerprintStatus, setFingerprintStatus] = useState(null);
+  const [loadingFingerprint, setLoadingFingerprint] = useState(true);
   const [activeSection, setActiveSection] = useState(null);
 
   useEffect(() => {
     if (isOpen && currentTier === 'premium') {
       fetchGPUStatus();
+      fetchFingerprintStatus();
     }
   }, [isOpen, currentTier]);
 
@@ -60,23 +72,62 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
     }
   };
 
+  const fetchFingerprintStatus = async () => {
+    setLoadingFingerprint(true);
+    try {
+      const status = await getFingerprintStatus();
+      setFingerprintStatus(status);
+    } catch (error) {
+      console.error('Failed to fetch fingerprint status:', error);
+      setFingerprintStatus({ available: false, songs_indexed: 0 });
+    } finally {
+      setLoadingFingerprint(false);
+    }
+  };
+
   const [config, setConfig] = useState({
     whisper_model: 'base',
-    engine: 'hybrid',
+    matching_method: 'hybrid', // tfidf, neural, fingerprint, hybrid
+    hybrid_methods: ['neural', 'tfidf'], // For hybrid: which methods to combine
     sbert_model: 'all-MiniLM-L6-v2',
-    use_gpu: true
+    use_gpu: true,
+    engine: 'hybrid' // This will be computed based on matching_method
   });
+
+  // Compute engine based on matching method
+  useEffect(() => {
+    let engine = 'tfidf';
+    
+    if (config.matching_method === 'tfidf') {
+      engine = 'tfidf';
+    } else if (config.matching_method === 'neural') {
+      engine = 'neural';
+    } else if (config.matching_method === 'fingerprint') {
+      engine = 'tfidf'; // Fallback, will use fingerprint_only in backend
+    } else if (config.matching_method === 'hybrid') {
+      // Determine hybrid engine based on selected methods
+      if (config.hybrid_methods.includes('neural')) {
+        engine = 'hybrid';
+      } else {
+        engine = 'tfidf';
+      }
+    }
+    
+    setConfig(prev => ({ ...prev, engine }));
+  }, [config.matching_method, config.hybrid_methods]);
 
   const tiers = {
     free: {
       whisper: ['tiny', 'base'],
-      engines: ['tfidf'],
-      sbert: []
+      methods: ['tfidf'],
+      sbert: [],
+      gpu: false
     },
     premium: {
       whisper: ['tiny', 'base', 'small', 'medium', 'large'],
-      engines: ['tfidf', 'neural', 'hybrid'],
-      sbert: ['all-MiniLM-L6-v2', 'all-mpnet-base-v2', 'paraphrase-MiniLM-L6-v2']
+      methods: ['tfidf', 'neural', 'fingerprint', 'hybrid'],
+      sbert: ['all-MiniLM-L6-v2', 'all-mpnet-base-v2', 'paraphrase-MiniLM-L6-v2'],
+      gpu: true
     }
   };
 
@@ -88,30 +139,50 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
     large: { speed: '~1x', accuracy: 'Best', size: '1550M', time: '60-120s' }
   };
 
-  const engineInfo = {
-    tfidf: { 
-      name: 'TF-IDF', 
+  const matchingMethodsInfo = {
+    tfidf: {
+      name: 'TF-IDF Only',
       description: 'Fast keyword-based statistical matching',
+      icon: Gauge,
+      color: 'blue',
       accuracy: 75,
       speed: 'Instant',
-      icon: Gauge,
-      color: 'blue'
+      usesLyrics: true,
+      usesAudio: false,
+      requiresFingerprint: false
     },
-    neural: { 
-      name: 'Neural (BERT)', 
-      description: 'Deep learning semantic understanding',
+    neural: {
+      name: 'Neural Only',
+      description: 'AI semantic understanding with BERT',
+      icon: Sparkles,
+      color: 'purple',
       accuracy: 90,
       speed: 'Fast',
-      icon: Sparkles,
-      color: 'purple'
+      usesLyrics: true,
+      usesAudio: false,
+      requiresFingerprint: false
     },
-    hybrid: { 
-      name: 'Hybrid Engine', 
-      description: 'Combined TF-IDF + Neural for maximum accuracy',
+    fingerprint: {
+      name: 'Fingerprint Only',
+      description: 'Pure audio-based matching (like Shazam)',
+      icon: Radio,
+      color: 'green',
       accuracy: 95,
-      speed: 'Medium',
+      speed: 'Very Fast',
+      usesLyrics: false,
+      usesAudio: true,
+      requiresFingerprint: true
+    },
+    hybrid: {
+      name: 'Hybrid Multi-Method',
+      description: 'Combine multiple techniques for maximum accuracy',
       icon: Zap,
-      color: 'amber'
+      color: 'amber',
+      accuracy: 98,
+      speed: 'Medium',
+      usesLyrics: true,
+      usesAudio: true,
+      requiresFingerprint: false
     }
   };
 
@@ -125,6 +196,12 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
 
   const tierConfig = tiers[currentTier];
   const isLocked = (value, list) => !list.includes(value);
+  const currentMethodInfo = matchingMethodsInfo[config.matching_method];
+
+  // Check if fingerprint is required but not available
+  const fingerprintRequired = config.matching_method === 'fingerprint' || 
+    (config.matching_method === 'hybrid' && config.hybrid_methods.includes('fingerprint'));
+  const fingerprintNotReady = fingerprintRequired && (!fingerprintStatus?.available);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -140,7 +217,7 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-white mb-1">Processing Configuration</h2>
-                <p className="text-sm text-slate-400">Customize AI models and performance settings</p>
+                <p className="text-sm text-slate-400">Customize AI models and matching methods</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -169,7 +246,7 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
                   <div className="flex-1">
                     <h3 className="text-lg font-bold text-white mb-2">Unlock Premium Features</h3>
                     <p className="text-slate-300 mb-4 text-sm leading-relaxed">
-                      Get access to advanced AI models, GPU acceleration, neural embeddings, and hybrid matching for superior accuracy
+                      Get GPU acceleration, neural embeddings, acoustic fingerprinting, and hybrid matching
                     </p>
                     <button
                       onClick={() => { onChangeTier('premium'); onClose(); }}
@@ -381,33 +458,75 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
               </div>
             </div>
 
-            {/* Matching Engine Selection */}
+            {/* Matching Method Selection - NEW ENHANCED SECTION */}
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center border border-purple-500/20">
-                  <Sparkles className="w-5 h-5 text-purple-400" />
+                  <TrendingUp className="w-5 h-5 text-purple-400" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Matching Algorithm</h3>
-                  <p className="text-sm text-slate-400">Select how to match transcription with songs</p>
+                  <h3 className="text-lg font-bold text-white">Matching Method</h3>
+                  <p className="text-sm text-slate-400">Select how to identify the song</p>
                 </div>
               </div>
 
+              {/* Fingerprint Status Banner */}
+              {currentTier === 'premium' && (
+                <div className={`rounded-xl p-4 border ${
+                  loadingFingerprint
+                    ? 'bg-blue-500/10 border-blue-500/30'
+                    : fingerprintStatus?.available
+                    ? 'bg-green-500/10 border-green-500/30'
+                    : 'bg-yellow-500/10 border-yellow-500/30'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <Database className={`w-5 h-5 ${
+                      loadingFingerprint
+                        ? 'text-blue-400'
+                        : fingerprintStatus?.available
+                        ? 'text-green-400'
+                        : 'text-yellow-400'
+                    }`} />
+                    {loadingFingerprint ? (
+                      <span className="text-sm text-blue-400">Checking fingerprint database...</span>
+                    ) : fingerprintStatus?.available ? (
+                      <span className="text-sm text-green-400 font-semibold">
+                        ✓ Fingerprint database ready ({fingerprintStatus.songs_indexed} songs indexed)
+                      </span>
+                    ) : (
+                      <div className="flex-1">
+                        <span className="text-sm text-yellow-400 font-semibold">⚠ Fingerprint database not built</span>
+                        <p className="text-xs text-yellow-300 mt-1">Run: python scripts/build_fingerprints.py</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Method Selection Cards */}
               <div className="space-y-3">
-                {Object.entries(engineInfo).map(([engine, info]) => {
-                  const locked = isLocked(engine, tierConfig.engines);
-                  const isSelected = config.engine === engine;
+                {Object.entries(matchingMethodsInfo).map(([method, info]) => {
+                  const locked = isLocked(method, tierConfig.methods);
+                  const isSelected = config.matching_method === method;
                   const Icon = info.icon;
+                  const requiresFingerprint = info.requiresFingerprint;
+                  const fingerprintUnavailable = requiresFingerprint && !fingerprintStatus?.available;
+                  const isDisabled = locked || (fingerprintUnavailable && !loadingFingerprint);
                   
                   return (
                     <button
-                      key={engine}
-                      onClick={() => !locked && setConfig(prev => ({ ...prev, engine }))}
-                      disabled={locked}
+                      key={method}
+                      onClick={() => !isDisabled && setConfig(prev => ({ 
+                        ...prev, 
+                        matching_method: method,
+                        // Reset hybrid methods when switching to non-hybrid
+                        hybrid_methods: method === 'hybrid' ? prev.hybrid_methods : []
+                      }))}
+                      disabled={isDisabled}
                       className={`relative w-full p-5 rounded-xl border-2 text-left transition-all ${
                         isSelected
                           ? `border-${info.color}-500 bg-${info.color}-500/10 shadow-lg shadow-${info.color}-500/25`
-                          : locked
+                          : isDisabled
                           ? 'border-slate-800/50 bg-slate-900/30 opacity-50 cursor-not-allowed'
                           : 'border-slate-800/50 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900/70'
                       }`}
@@ -418,7 +537,12 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
                           <Lock className="w-5 h-5 text-amber-500" />
                         </div>
                       )}
-                      {isSelected && (
+                      {fingerprintUnavailable && !locked && (
+                        <div className="absolute top-4 right-4">
+                          <AlertCircle className="w-5 h-5 text-yellow-500" />
+                        </div>
+                      )}
+                      {isSelected && !isDisabled && (
                         <div className={`absolute top-4 right-4 w-6 h-6 bg-${info.color}-500 rounded-full flex items-center justify-center`}>
                           <Check className="w-4 h-4 text-white" />
                         </div>
@@ -431,7 +555,7 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
                         <div className="flex-1">
                           <div className="font-bold text-white text-xl mb-2">{info.name}</div>
                           <div className="text-slate-300 text-sm mb-4">{info.description}</div>
-                          <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-4 flex-wrap">
                             <div className="flex items-center gap-2">
                               <div className="text-xs text-slate-400">Accuracy</div>
                               <div className="flex items-center gap-1">
@@ -450,6 +574,18 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
                               <Clock className="w-4 h-4 text-slate-400" />
                               <div className="text-sm text-slate-400">{info.speed}</div>
                             </div>
+                            <div className="flex items-center gap-3">
+                              {info.usesLyrics && (
+                                <div className="px-2 py-1 bg-blue-500/20 rounded text-xs font-bold text-blue-400">
+                                  LYRICS
+                                </div>
+                              )}
+                              {info.usesAudio && (
+                                <div className="px-2 py-1 bg-green-500/20 rounded text-xs font-bold text-green-400">
+                                  AUDIO
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -457,10 +593,149 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
                   );
                 })}
               </div>
+
+              {/* Hybrid Method Configuration */}
+              {config.matching_method === 'hybrid' && currentTier === 'premium' && (
+                <div className="bg-slate-900/50 rounded-xl p-6 border border-slate-800/50">
+                  <h4 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                    Hybrid Configuration - Select Methods to Combine
+                  </h4>
+                  
+                  <div className="space-y-3">
+                    {/* TF-IDF Option */}
+                    <label className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800/70 transition-all">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={config.hybrid_methods.includes('tfidf')}
+                          onChange={(e) => {
+                            const methods = e.target.checked
+                              ? [...config.hybrid_methods, 'tfidf']
+                              : config.hybrid_methods.filter(m => m !== 'tfidf');
+                            setConfig(prev => ({ ...prev, hybrid_methods: methods }));
+                          }}
+                          className="w-5 h-5 rounded border-slate-600 text-blue-500 focus:ring-blue-500"
+                        />
+                        <Gauge className="w-5 h-5 text-blue-400" />
+                        <div>
+                          <div className="font-semibold text-white">TF-IDF</div>
+                          <div className="text-xs text-slate-400">Fast keyword matching</div>
+                        </div>
+                      </div>
+                      <div className="text-sm font-bold text-blue-400">75% accuracy</div>
+                    </label>
+
+                    {/* Neural Option */}
+                    <label className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800/70 transition-all">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={config.hybrid_methods.includes('neural')}
+                          onChange={(e) => {
+                            const methods = e.target.checked
+                              ? [...config.hybrid_methods, 'neural']
+                              : config.hybrid_methods.filter(m => m !== 'neural');
+                            setConfig(prev => ({ ...prev, hybrid_methods: methods }));
+                          }}
+                          className="w-5 h-5 rounded border-slate-600 text-purple-500 focus:ring-purple-500"
+                        />
+                        <Sparkles className="w-5 h-5 text-purple-400" />
+                        <div>
+                          <div className="font-semibold text-white">Neural (BERT)</div>
+                          <div className="text-xs text-slate-400">AI semantic understanding</div>
+                        </div>
+                      </div>
+                      <div className="text-sm font-bold text-purple-400">90% accuracy</div>
+                    </label>
+
+                    {/* Fingerprint Option */}
+                    <label className={`flex items-center justify-between p-4 rounded-lg transition-all ${
+                      fingerprintStatus?.available
+                        ? 'bg-slate-800/50 cursor-pointer hover:bg-slate-800/70'
+                        : 'bg-slate-800/30 opacity-50 cursor-not-allowed'
+                    }`}>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={config.hybrid_methods.includes('fingerprint')}
+                          onChange={(e) => {
+                            if (!fingerprintStatus?.available) return;
+                            const methods = e.target.checked
+                              ? [...config.hybrid_methods, 'fingerprint']
+                              : config.hybrid_methods.filter(m => m !== 'fingerprint');
+                            setConfig(prev => ({ ...prev, hybrid_methods: methods }));
+                          }}
+                          disabled={!fingerprintStatus?.available}
+                          className="w-5 h-5 rounded border-slate-600 text-green-500 focus:ring-green-500"
+                        />
+                        <Radio className="w-5 h-5 text-green-400" />
+                        <div>
+                          <div className="font-semibold text-white flex items-center gap-2">
+                            Acoustic Fingerprint
+                            {!fingerprintStatus?.available && (
+                              <span className="text-xs text-yellow-500">(not ready)</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-400">Audio-based matching</div>
+                        </div>
+                      </div>
+                      <div className="text-sm font-bold text-green-400">95% accuracy</div>
+                    </label>
+                  </div>
+
+                  {/* Hybrid Summary */}
+                  {config.hybrid_methods.length > 0 && (
+                    <div className="mt-4 p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Check className="w-4 h-4 text-amber-400" />
+                        <span className="text-sm font-bold text-amber-400">
+                          Combining {config.hybrid_methods.length} method{config.hybrid_methods.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {config.hybrid_methods.map(method => (
+                          <div key={method} className="px-2 py-1 bg-amber-500/20 rounded text-xs font-bold text-amber-300 uppercase">
+                            {method}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {config.hybrid_methods.length === 0 && (
+                    <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-400" />
+                        <span className="text-sm text-red-400">Select at least one method for hybrid matching</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Fingerprint Warning */}
+              {fingerprintNotReady && !loadingFingerprint && (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-yellow-500 font-semibold mb-2">Fingerprint Database Required</p>
+                      <p className="text-sm text-yellow-400 mb-3">
+                        This method requires the fingerprint database to be built first.
+                      </p>
+                      <code className="block bg-black/30 rounded px-3 py-2 text-xs font-mono text-yellow-300">
+                        python scripts/build_fingerprints.py
+                      </code>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* SBERT Model Selection */}
-            {(config.engine === 'neural' || config.engine === 'hybrid') && (
+            {/* SBERT Model Selection - Only show if neural/hybrid with neural */}
+            {(config.matching_method === 'neural' || 
+              (config.matching_method === 'hybrid' && config.hybrid_methods.includes('neural'))) && (
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center border border-amber-500/20">
@@ -544,15 +819,15 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
                     <div className="font-bold text-white">{config.whisper_model.toUpperCase()}</div>
                   </div>
                   <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-                    <div className="text-xs text-slate-400 mb-2">Engine</div>
-                    <div className="font-bold text-white">{config.engine.toUpperCase()}</div>
+                    <div className="text-xs text-slate-400 mb-2">Method</div>
+                    <div className="font-bold text-white">{config.matching_method.toUpperCase()}</div>
                   </div>
                   <div className={`rounded-xl p-4 border ${
                     config.use_gpu 
                       ? 'bg-green-500/10 border-green-500/30' 
                       : 'bg-slate-800/50 border-slate-700/50'
                   }`}>
-                    <div className="text-xs text-slate-400 mb-2">Processing</div>
+                    <div className="text-xs text-slate-400 mb-2">Device</div>
                     <div className={`font-bold flex items-center gap-2 ${
                       config.use_gpu ? 'text-green-400' : 'text-white'
                     }`}>
@@ -570,6 +845,20 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
                     </div>
                   </div>
                 </div>
+
+                {/* Hybrid Methods Display */}
+                {config.matching_method === 'hybrid' && config.hybrid_methods.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-slate-800/50">
+                    <div className="text-sm text-slate-400 mb-2">Hybrid Methods:</div>
+                    <div className="flex flex-wrap gap-2">
+                      {config.hybrid_methods.map(method => (
+                        <div key={method} className="px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full text-xs font-bold text-amber-400 uppercase">
+                          {method}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Estimated Processing Time */}
                 <div className="mt-4 pt-4 border-t border-slate-800/50">
@@ -597,14 +886,45 @@ export const ConfigModal = ({ isOpen = true, onClose = () => {}, onStart = () =>
             <div className="flex-1">
               <div className="text-sm text-slate-400 mb-1">Ready to process with optimized settings</div>
               <div className="text-xs text-slate-500">
-                {config.engine === 'hybrid' && 'Using hybrid engine for maximum accuracy'}
-                {config.engine === 'neural' && 'Using neural matching for semantic understanding'}
-                {config.engine === 'tfidf' && 'Using fast keyword-based matching'}
+                {config.matching_method === 'hybrid' 
+                  ? `Combining ${config.hybrid_methods.length} method${config.hybrid_methods.length !== 1 ? 's' : ''} for maximum accuracy`
+                  : config.matching_method === 'fingerprint'
+                  ? 'Using pure audio-based matching (no transcription needed)'
+                  : config.matching_method === 'neural'
+                  ? 'Using neural semantic matching for best understanding'
+                  : 'Using fast keyword-based matching'}
               </div>
             </div>
             <button
-              onClick={() => onStart(config)}
-              className="group relative px-8 py-4 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 bg-size-200 hover:bg-pos-100 text-white font-bold rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all text-lg flex items-center gap-3"
+              onClick={() => {
+                // Validate hybrid methods
+                if (config.matching_method === 'hybrid' && config.hybrid_methods.length === 0) {
+                  alert('Please select at least one method for hybrid matching');
+                  return;
+                }
+                
+                // Validate fingerprint availability
+                if (fingerprintNotReady) {
+                  alert('Fingerprint database not available. Please build it first or choose another method.');
+                  return;
+                }
+                
+                // Prepare config for backend
+                const finalConfig = {
+                  whisper_model: config.whisper_model,
+                  engine: config.engine,
+                  sbert_model: config.sbert_model,
+                  use_gpu: config.use_gpu,
+                  matching_method: config.matching_method,
+                  hybrid_methods: config.hybrid_methods,
+                  use_fingerprint: config.matching_method === 'fingerprint' || 
+                                  (config.matching_method === 'hybrid' && config.hybrid_methods.includes('fingerprint'))
+                };
+                
+                onStart(finalConfig);
+              }}
+              disabled={config.matching_method === 'hybrid' && config.hybrid_methods.length === 0}
+              className="group relative px-8 py-4 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 bg-size-200 hover:bg-pos-100 text-white font-bold rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all text-lg flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>Start Processing</span>
               <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />

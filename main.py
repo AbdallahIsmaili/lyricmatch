@@ -1,6 +1,7 @@
 """
 Main pipeline for WaveSeek - Audio to Song Recognition
 Enhanced with neural embeddings support
+FIXED: Actually uses --use-fingerprint flag
 """
 import argparse
 from pathlib import Path
@@ -11,7 +12,7 @@ from src.audio_processor import AudioProcessor
 from src.transcriber import Transcriber
 from src.matcher import LyricsMatcher  # TF-IDF
 from src.neural_matcher import NeuralLyricsMatcher  # Neural
-
+from src.hybrid_matcher import HybridMatcher
 
 class WaveSeek:
     """Main WaveSeek pipeline with multiple matching engines"""
@@ -62,27 +63,17 @@ class WaveSeek:
         else:
             print(f"⚠️  Unknown engine '{self.matching_engine}', defaulting to neural")
             return NeuralLyricsMatcher(model_name=Config.SBERT_MODEL)
-    
-    def identify_song(self, audio_path, preprocess=True, top_k=None, verbose=True, language=None):
-        """
-        Complete pipeline: Audio → Transcription → Matching
+  
+
+    def identify_song(self, audio_path, preprocess=True, top_k=None, verbose=True, 
+                    language=None, use_fingerprint=False):
+        """Complete pipeline with optional fingerprinting"""
         
-        Args:
-            audio_path: Path to audio file
-            preprocess: Apply audio preprocessing
-            top_k: Number of top matches to return
-            verbose: Print detailed information
-            language: Language code or None for auto-detection
-        
-        Returns:
-            List of matching songs
-        """
         audio_path = Path(audio_path)
         
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
         
-        # Use provided language or fall back to instance language
         lang = language if language is not None else self.language
         
         print("="*60)
@@ -99,6 +90,39 @@ class WaveSeek:
         else:
             audio, sr = self.audio_processor.load_audio(audio_path)
         
+        # NEW: If fingerprint requested, use fingerprinting
+        if use_fingerprint:
+            if verbose:
+                print("\n🔊 Step 2: Acoustic Fingerprinting (Lyrics-Free)")
+                print("-"*60)
+            
+            from src.fingerprinter import AcousticFingerprinter
+            fingerprinter = AcousticFingerprinter()
+            
+            results = fingerprinter.match_audio(str(audio_path), top_k=top_k or Config.TOP_K_RESULTS)
+            
+            if verbose:
+                print(fingerprinter.get_match_summary(results))
+            
+            # Convert to standard format
+            formatted_results = []
+            for result in results:
+                formatted_results.append({
+                    'filename': result['filename'],
+                    'fingerprint_score': result['fingerprint_score'],
+                    'final_score': result['fingerprint_score'],
+                    'aligned_matches': result['aligned_matches'],
+                    'total_matches': result['total_matches'],
+                    'time_offset': result['time_offset'],
+                    'match_type': 'fingerprint_only',
+                    'artist': 'Unknown',  # Fingerprint doesn't have artist info
+                    'title': result['filename']
+                })
+            
+            fingerprinter.close()
+            return formatted_results
+        
+        # EXISTING: Lyrics-based matching
         # Step 2: Transcription
         if verbose:
             print("\n🎤 Step 2: Speech-to-Text Transcription")
@@ -123,7 +147,7 @@ class WaveSeek:
             print(f"\n🌐 Detected Language: {lang_name} ({transcription['language']})")
             print(f"   Confidence: {transcription.get('language_probability', 0):.2%}")
         
-        # Step 3: Matching with selected engine
+        # Step 3: Lyrics matching
         if verbose:
             print(f"\n🔍 Step 3: Lyrics Matching ({self.matching_engine.upper()})")
             print("-"*60)
@@ -133,11 +157,10 @@ class WaveSeek:
             top_k=top_k or Config.TOP_K_RESULTS
         )
         
-        # Display results
         if verbose:
             print(self.matcher.get_match_summary(results))
         
-        # Add transcription info to results
+        # Add transcription info
         for result in results:
             result['transcription'] = transcription['text']
             result['transcription_language'] = transcription['language']
@@ -146,7 +169,8 @@ class WaveSeek:
         
         return results
     
-    def batch_identify(self, audio_dir, output_file=None, language=None):
+    
+    def batch_identify(self, audio_dir, output_file=None, language=None, use_fingerprint=False):
         """
         Process multiple audio files
         
@@ -154,6 +178,7 @@ class WaveSeek:
             audio_dir: Directory containing audio files
             output_file: Optional output CSV file for results
             language: Language code or None for auto-detection
+            use_fingerprint: Use fingerprinting instead of lyrics
         
         Returns:
             Dictionary of results
@@ -182,17 +207,24 @@ class WaveSeek:
                 results = self.identify_song(
                     audio_file, 
                     verbose=False,
-                    language=language
+                    language=language,
+                    use_fingerprint=use_fingerprint
                 )
                 all_results[audio_file.name] = results
                 
                 if results:
                     top_match = results[0]
-                    lang = top_match.get('transcription_language', '?')
-                    engine = top_match.get('matching_engine', '?')
-                    print(f"✅ {audio_file.name} [{lang}] [{engine}]")
-                    print(f"   → {top_match['artist']} - {top_match['title']} "
-                          f"({top_match['final_score']:.2%})")
+                    
+                    if use_fingerprint:
+                        print(f"✅ {audio_file.name} [FINGERPRINT]")
+                        print(f"   → {top_match['filename']} "
+                              f"({top_match['final_score']:.2%})")
+                    else:
+                        lang = top_match.get('transcription_language', '?')
+                        engine = top_match.get('matching_engine', '?')
+                        print(f"✅ {audio_file.name} [{lang}] [{engine}]")
+                        print(f"   → {top_match['artist']} - {top_match['title']} "
+                              f"({top_match['final_score']:.2%})")
                 else:
                     print(f"❌ {audio_file.name} - No match found")
                 
@@ -202,11 +234,11 @@ class WaveSeek:
         
         # Save results if output file specified
         if output_file:
-            self._save_results(all_results, output_file)
+            self._save_results(all_results, output_file, use_fingerprint)
         
         return all_results
     
-    def _save_results(self, results, output_file):
+    def _save_results(self, results, output_file, use_fingerprint=False):
         """Save results to CSV"""
         import pandas as pd
         
@@ -214,32 +246,36 @@ class WaveSeek:
         for filename, matches in results.items():
             if matches:
                 for i, match in enumerate(matches):
-                    rows.append({
-                        'filename': filename,
-                        'rank': i + 1,
-                        'artist': match['artist'],
-                        'title': match['title'],
-                        'album': match.get('album'),
-                        'year': match.get('year'),
-                        'score': match['final_score'],
-                        'engine': match.get('matching_engine', ''),
-                        'language': match.get('transcription_language', ''),
-                        'lang_confidence': match.get('language_confidence', 0),
-                        'transcription': match.get('transcription', '')
-                    })
+                    if use_fingerprint:
+                        rows.append({
+                            'filename': filename,
+                            'rank': i + 1,
+                            'matched_file': match['filename'],
+                            'score': match['final_score'],
+                            'aligned_matches': match.get('aligned_matches', 0),
+                            'time_offset': match.get('time_offset', 0),
+                            'match_type': 'fingerprint'
+                        })
+                    else:
+                        rows.append({
+                            'filename': filename,
+                            'rank': i + 1,
+                            'artist': match['artist'],
+                            'title': match['title'],
+                            'album': match.get('album'),
+                            'year': match.get('year'),
+                            'score': match['final_score'],
+                            'engine': match.get('matching_engine', ''),
+                            'language': match.get('transcription_language', ''),
+                            'lang_confidence': match.get('language_confidence', 0),
+                            'transcription': match.get('transcription', '')
+                        })
             else:
                 rows.append({
                     'filename': filename,
                     'rank': 0,
-                    'artist': None,
-                    'title': 'No match',
-                    'album': None,
-                    'year': None,
-                    'score': 0,
-                    'engine': '',
-                    'language': '',
-                    'lang_confidence': 0,
-                    'transcription': ''
+                    'matched_file' if use_fingerprint else 'title': 'No match',
+                    'score': 0
                 })
         
         df = pd.DataFrame(rows)
@@ -260,6 +296,7 @@ def main():
                '  %(prog)s song.wav -e neural           # Neural embeddings\n'
                '  %(prog)s song.wav -e tfidf            # TF-IDF matching\n'
                '  %(prog)s song.wav -e hybrid           # Hybrid approach\n'
+               '  %(prog)s song.wav --use-fingerprint   # Audio fingerprinting only\n'
                '  %(prog)s song.wav -l ko               # Force Korean\n'
                '  %(prog)s audio_folder/ -b             # Batch process\n',
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -337,7 +374,13 @@ def main():
         action='store_true',
         help='Force rebuild of neural embeddings cache'
     )
-    
+
+    parser.add_argument(
+        '--use-fingerprint',
+        action='store_true',
+        help='Use acoustic fingerprinting instead of lyrics (faster, no transcription needed)'
+    )
+        
     args = parser.parse_args()
     
     # Handle list models
@@ -372,14 +415,16 @@ def main():
             results = waveseek.batch_identify(
                 args.audio_path, 
                 args.output,
-                language=language
+                language=language,
+                use_fingerprint=args.use_fingerprint
             )
         else:
             results = waveseek.identify_song(
                 args.audio_path,
                 preprocess=not args.no_preprocess,
                 top_k=args.top_k,
-                language=language
+                language=language,
+                use_fingerprint=args.use_fingerprint  # FIXED: Actually pass the flag
             )
         
         waveseek.close()

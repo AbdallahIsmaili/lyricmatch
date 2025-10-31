@@ -87,6 +87,17 @@ class Config:
         'hi': 'Hindi',
         # ... (90+ languages supported)
     }
+
+    # Fingerprinting Settings
+    USE_FINGERPRINTING = True  # Enable acoustic fingerprinting
+    FINGERPRINT_CACHE_DIR = MODELS_DIR / "fingerprints"
+
+    # Hybrid Matching Weights
+    HYBRID_WEIGHTS = {
+        'fingerprint': 0.5,  # Audio-based matching
+        'neural': 0.3,       # Semantic lyrics matching
+        'tfidf': 0.2         # Keyword lyrics matching
+    }
     
     @classmethod
     def create_directories(cls):

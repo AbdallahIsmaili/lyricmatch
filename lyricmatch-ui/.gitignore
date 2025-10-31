@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+src/old.tsx
+src/waveseekv2.tsx
+src/waveseekv1.tsx

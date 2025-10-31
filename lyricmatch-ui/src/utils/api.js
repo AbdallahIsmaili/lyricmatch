@@ -54,7 +54,17 @@ export const uploadAudio = async (file, config, tier) => {
   formData.append('tier', tier);
   formData.append('whisper_model', config.whisper_model);
   formData.append('engine', config.engine);
-  formData.append('use_gpu', config.use_gpu || 'false'); // ADD THIS LINE
+  formData.append('use_gpu', config.use_gpu || 'false');
+  
+  // Send matching method info
+  formData.append('matching_method', config.matching_method || 'tfidf');
+  formData.append('hybrid_methods', JSON.stringify(config.hybrid_methods || []));
+  
+  // Legacy fingerprint flag (for backwards compatibility)
+  const use_fingerprint = config.matching_method === 'fingerprint' || 
+                         (config.matching_method === 'hybrid' && config.hybrid_methods?.includes('fingerprint'));
+  formData.append('use_fingerprint', use_fingerprint.toString());
+  
   if (config.sbert_model) {
     formData.append('sbert_model', config.sbert_model);
   }

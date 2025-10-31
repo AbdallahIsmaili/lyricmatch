@@ -14,6 +14,7 @@ import uuid
 import sys
 import numpy as np
 import math
+import json
 
 from dotenv import load_dotenv
 
@@ -68,7 +69,7 @@ TIER_CONFIGS = {
         'max_file_size': 20 * 1024 * 1024,  # 20MB
         'max_duration_seconds': 30,  # 30 seconds
         'daily_limit': 5,
-        'gpu_enabled': False,  # NEW
+        'gpu_enabled': False,
         'features': [
             'Basic TF-IDF matching',
             'CPU processing',
@@ -84,7 +85,7 @@ TIER_CONFIGS = {
         'max_file_size': 200 * 1024 * 1024,  # 200MB
         'max_duration_seconds': 180,  # 3 minutes
         'daily_limit': None,  # Unlimited
-        'gpu_enabled': GPU_AVAILABLE,  # NEW - Enable GPU if available
+        'gpu_enabled': GPU_AVAILABLE,
         'features': [
             '🎮 GPU Acceleration (RTX 3060)',
             '🧠 Advanced Neural Embeddings',
@@ -173,15 +174,24 @@ class WaveSeekAPI:
         
         return self.matchers[cache_key]
     
+
     def process_audio(self, job_id, audio_path, config):
-        """Process audio with GPU support"""
+        """Process audio with GPU support and optional fingerprinting"""
         try:
             tier = config['tier']
             use_gpu = config.get('use_gpu', False)
+            matching_method = config.get('matching_method', 'tfidf')
+            hybrid_methods = config.get('hybrid_methods', [])
+            
+            # Determine if fingerprinting should be used
+            use_fingerprint = (matching_method == 'fingerprint' or 
+                              (matching_method == 'hybrid' and 'fingerprint' in hybrid_methods))
             
             print(f"\n📄 Processing job {job_id}")
             print(f"⚙️  Tier: {tier}")
             print(f"⚙️  GPU: {'Enabled' if use_gpu else 'Disabled'}")
+            print(f"⚙️  Matching Method: {matching_method}")
+            print(f"⚙️  Fingerprint: {'Enabled' if use_fingerprint else 'Disabled'}")
             print(f"⚙️  Whisper: {config['whisper_model']}")
             print(f"⚙️  Engine: {config['engine']}")
             
@@ -190,6 +200,8 @@ class WaveSeekAPI:
             processing_jobs[job_id]['progress'] = 10
             processing_jobs[job_id]['tier'] = tier
             processing_jobs[job_id]['gpu_enabled'] = use_gpu
+            processing_jobs[job_id]['fingerprint_enabled'] = use_fingerprint
+            processing_jobs[job_id]['matching_method'] = matching_method
             
             # Preprocess
             audio, sr = self.audio_processor.preprocess_audio(audio_path)
@@ -204,21 +216,95 @@ class WaveSeekAPI:
                     f"Audio too long: {duration:.1f}s (max {max_duration}s for {tier} tier)"
                 )
             
-            # Transcribe
-            processing_jobs[job_id]['status'] = 'transcribing'
-            processing_jobs[job_id]['progress'] = 30
-            
-            transcriber = self.get_transcriber(config['whisper_model'], use_gpu)
-            transcription = transcriber.transcribe(str(audio_path))
+            # Transcribe ONLY if NOT using fingerprint-only mode
+            transcription = None
+            if matching_method != 'fingerprint':
+                processing_jobs[job_id]['status'] = 'transcribing'
+                processing_jobs[job_id]['progress'] = 30
+                
+                transcriber = self.get_transcriber(config['whisper_model'], use_gpu)
+                transcription = transcriber.transcribe(str(audio_path))
+                
+                processing_jobs[job_id]['transcription'] = transcription['text']
+                processing_jobs[job_id]['language'] = transcription['language']
             
             # Match
             processing_jobs[job_id]['status'] = 'matching'
             processing_jobs[job_id]['progress'] = 70
-            processing_jobs[job_id]['transcription'] = transcription['text']
-            processing_jobs[job_id]['language'] = transcription['language']
             
-            matcher = self.get_matcher(config['engine'], config.get('sbert_model'), use_gpu)
-            results = matcher.match_with_details(transcription['text'], top_k=5)
+            if matching_method == 'fingerprint':
+                # FINGERPRINT ONLY - No lyrics needed
+                from src.fingerprinter import AcousticFingerprinter
+                
+                fingerprinter = AcousticFingerprinter()
+                
+                # Verify fingerprints loaded
+                if not fingerprinter.fingerprint_db:
+                    raise Exception(
+                        "Fingerprint database empty. Please rebuild using "
+                        "'python scripts/build_fingerprints.py'"
+                    )
+                
+                results = fingerprinter.match_audio(
+                    audio_path=str(audio_path),
+                    top_k=5
+                )
+                
+                # Convert fingerprint results to standard format
+                formatted_results = []
+                for result in results:
+                    formatted_results.append({
+                        'filename': result['filename'],
+                        'artist': 'Unknown',  # Fingerprint doesn't store artist
+                        'title': result['filename'],
+                        'fingerprint_score': result['fingerprint_score'],
+                        'final_score': result['fingerprint_score'],
+                        'aligned_matches': result['aligned_matches'],
+                        'total_matches': result['total_matches'],
+                        'time_offset': result['time_offset'],
+                        'match_type': 'fingerprint_only'
+                    })
+                
+                results = formatted_results
+                fingerprinter.close()
+                
+            elif matching_method == 'hybrid' and 'fingerprint' in hybrid_methods:
+                # HYBRID MODE with fingerprinting
+                from src.hybrid_matcher import HybridMatcher
+                
+                # Determine weights based on selected methods
+                fingerprint_weight = 0.5 if 'fingerprint' in hybrid_methods else 0.0
+                neural_weight = 0.3 if 'neural' in hybrid_methods else 0.0
+                tfidf_weight = 0.2 if 'tfidf' in hybrid_methods else 0.0
+                
+                # Normalize weights
+                total_weight = fingerprint_weight + neural_weight + tfidf_weight
+                if total_weight > 0:
+                    fingerprint_weight /= total_weight
+                    neural_weight /= total_weight
+                    tfidf_weight /= total_weight
+                
+                hybrid_matcher = HybridMatcher(
+                    use_fingerprint='fingerprint' in hybrid_methods,
+                    use_neural='neural' in hybrid_methods,
+                    use_tfidf='tfidf' in hybrid_methods
+                )
+                
+                results = hybrid_matcher.match_with_audio(
+                    audio_path=str(audio_path),
+                    transcribed_text=transcription['text'],
+                    top_k=5,
+                    fingerprint_weight=fingerprint_weight,
+                    neural_weight=neural_weight,
+                    tfidf_weight=tfidf_weight
+                )
+                
+                hybrid_matcher.close()
+                
+            else:
+                # LYRICS-BASED MATCHING (TF-IDF or Neural)
+                matcher = self.get_matcher(config['engine'], config.get('sbert_model'), use_gpu)
+                results = matcher.match_with_details(transcription['text'], top_k=5)
             
             # Convert results
             results_native = convert_to_native_types(results)
@@ -238,19 +324,22 @@ class WaveSeekAPI:
             processing_jobs[job_id]['progress'] = 100
             processing_jobs[job_id]['results'] = cleaned_results
             processing_jobs[job_id]['audio_info'] = {
-                'duration': float(transcription['duration']) if not math.isnan(transcription['duration']) else None,
+                'duration': float(transcription['duration']) if transcription and not math.isnan(transcription['duration']) else duration,
                 'sample_rate': int(sr),
                 'channels': audio_info.get('channels', 1),
                 'bitrate': audio_info.get('bitrate', 0),
                 'file_size_mb': audio_info.get('file_size_mb', 0),
-                'processing_time': transcription.get('processing_time', 0)
+                'processing_time': transcription.get('processing_time', 0) if transcription else 0
             }
             processing_jobs[job_id]['config_used'] = {
                 'whisper_model': config['whisper_model'],
+                'matching_method': matching_method,
                 'engine': config['engine'],
                 'sbert_model': config.get('sbert_model'),
                 'gpu_enabled': use_gpu,
-                'device_used': transcription.get('device_used', 'cpu')
+                'fingerprint_enabled': use_fingerprint,
+                'hybrid_methods': hybrid_methods if matching_method == 'hybrid' else [],
+                'device_used': transcription.get('device_used', 'cpu') if transcription else 'cpu'
             }
             
             # GPU performance stats
@@ -259,7 +348,7 @@ class WaveSeekAPI:
                 processing_jobs[job_id]['gpu_stats'] = {
                     'vram_used_gb': gpu_info.get('memory_allocated_gb', 0),
                     'temperature_c': gpu_info.get('temperature_c'),
-                    'speedup': transcription.get('speedup_factor', 1.0)
+                    'speedup': transcription.get('speedup_factor', 1.0) if transcription else 1.0
                 }
             
             print(f"✅ Job {job_id} complete")
@@ -288,7 +377,7 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'version': '2.0.0',
-        'database_songs': len(waveseek_api.matchers.get('tfidf_default', LyricsMatcher()).songs_df) if waveseek_api.matchers.get('tfidf_default') else 0
+        'database_songs': len(waveseek_api.matchers.get('tfidf_default_cpu', LyricsMatcher()).songs_df) if waveseek_api.matchers.get('tfidf_default_cpu') else 0
     })
 
 @app.route('/api/tiers', methods=['GET'])
@@ -349,6 +438,16 @@ def upload_audio():
     sbert_model = request.form.get('sbert_model', None)
     use_gpu = request.form.get('use_gpu', 'false').lower() == 'true'
     
+    # NEW: Get matching method info from frontend
+    matching_method = request.form.get('matching_method', 'tfidf')
+    hybrid_methods_str = request.form.get('hybrid_methods', '[]')
+    
+    # Parse hybrid methods if it's a JSON string
+    try:
+        hybrid_methods = json.loads(hybrid_methods_str) if hybrid_methods_str else []
+    except:
+        hybrid_methods = []
+    
     # Validate tier
     if tier not in TIER_CONFIGS:
         return jsonify({'error': 'Invalid tier'}), 400
@@ -404,6 +503,7 @@ def upload_audio():
     print(f"🆔 Job: {job_id}")
     print(f"🎯 Tier: {tier}")
     print(f"🎮 GPU: {'Enabled' if use_gpu else 'Disabled'}")
+    print(f"🎯 Matching Method: {matching_method}")
     
     # Convert WebM
     if file_ext == '.webm':
@@ -431,13 +531,15 @@ def upload_audio():
         'gpu_enabled': use_gpu
     }
     
-    # Config
+    # Config for processing
     config = {
         'tier': tier,
         'whisper_model': whisper_model,
         'engine': engine,
         'sbert_model': sbert_model,
-        'use_gpu': use_gpu
+        'use_gpu': use_gpu,
+        'matching_method': matching_method,
+        'hybrid_methods': hybrid_methods
     }
     
     # Start processing
@@ -574,7 +676,7 @@ def search_youtube():
         
         youtube = build('youtube', 'v3', developerKey=api_key)
         
-        print(f"🔄 Making YouTube API request...")
+        print(f"📄 Making YouTube API request...")
         search_response = youtube.search().list(
             q=f"{artist} {title} official",
             part='id,snippet',
@@ -607,7 +709,6 @@ def search_youtube():
         import traceback
         traceback.print_exc()
         return jsonify({'url': None, 'error': str(e)}), 500
-    
 
 
 @app.route('/api/lyrics/fetch-artist', methods=['POST'])
@@ -615,7 +716,7 @@ def fetch_artist_lyrics():
     """Fetch and add artist's songs to database with automatic index rebuild"""
     data = request.json
     artist_name = data.get('artist_name', '')
-    max_songs = data.get('max_songs', 50)  # Allow customization
+    max_songs = data.get('max_songs', 200)  # Allow customization
     
     if not artist_name:
         return jsonify({'error': 'Artist name required'}), 400
@@ -713,6 +814,37 @@ def rebuild_indexes():
         }), 500
     
 
+@app.route('/api/fingerprint/status', methods=['GET'])
+def fingerprint_status():
+    """Check if fingerprint database is ready"""
+    cache_path = Config.MODELS_DIR / "fingerprints" / "fingerprint_cache.pkl"
+    
+    if not cache_path.exists():
+        return jsonify({
+            'available': False,
+            'message': 'Fingerprint database not built',
+            'songs_indexed': 0
+        })
+    
+    try:
+        import pickle
+        with open(cache_path, 'rb') as f:
+            cache = pickle.load(f)
+            
+        return jsonify({
+            'available': True,
+            'songs_indexed': len(cache.get('metadata', {})),
+            'unique_hashes': len(cache.get('fingerprints', {})),
+            'message': 'Fingerprint database ready'
+        })
+    except Exception as e:
+        return jsonify({
+            'available': False,
+            'error': str(e),
+            'message': 'Fingerprint database corrupted'
+        })
+    
+    
 # Clean up old jobs periodically
 def cleanup_old_jobs():
     """Remove jobs older than 1 hour"""
