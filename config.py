@@ -99,6 +99,17 @@ class Config:
         'tfidf': 0.2         # Keyword lyrics matching
     }
     
+
+    # Voice Analysis Settings
+    VOICE_ANALYSIS_ENABLED = True
+    VOICE_ANALYSIS_CACHE = True
+
+    # Voice thresholds
+    MALE_F0_RANGE = (85, 180)
+    FEMALE_F0_RANGE = (165, 255)
+    CHILD_F0_RANGE = (250, 400)
+
+
     @classmethod
     def create_directories(cls):
         """Create necessary directories if they don't exist"""

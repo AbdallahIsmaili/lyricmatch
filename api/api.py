@@ -39,6 +39,7 @@ from src.audio_processor import AudioProcessor
 from src.transcriber import Transcriber
 from src.matcher import LyricsMatcher
 from src.neural_matcher import NeuralLyricsMatcher
+from src.voice_analyzer import VoiceAnalyzer
 
 app = Flask(__name__)
 CORS(app)
@@ -130,7 +131,8 @@ class WaveSeekAPI:
         self.audio_processor = AudioProcessor()
         self.transcribers = {}
         self.matchers = {}
-        
+        self.voice_analyzer = VoiceAnalyzer()
+
         # Show GPU status on startup
         if GPU_AVAILABLE:
             print("\n" + "="*60)
@@ -176,22 +178,24 @@ class WaveSeekAPI:
     
 
     def process_audio(self, job_id, audio_path, config):
-        """Process audio with GPU support and optional fingerprinting"""
+        """Process audio with voice analysis, GPU support and optional fingerprinting"""
         try:
             tier = config['tier']
             use_gpu = config.get('use_gpu', False)
             matching_method = config.get('matching_method', 'tfidf')
             hybrid_methods = config.get('hybrid_methods', [])
+            analyze_voice = config.get('analyze_voice', True)
             
             # Determine if fingerprinting should be used
             use_fingerprint = (matching_method == 'fingerprint' or 
-                              (matching_method == 'hybrid' and 'fingerprint' in hybrid_methods))
+                            (matching_method == 'hybrid' and 'fingerprint' in hybrid_methods))
             
             print(f"\n📄 Processing job {job_id}")
             print(f"⚙️  Tier: {tier}")
             print(f"⚙️  GPU: {'Enabled' if use_gpu else 'Disabled'}")
             print(f"⚙️  Matching Method: {matching_method}")
             print(f"⚙️  Fingerprint: {'Enabled' if use_fingerprint else 'Disabled'}")
+            print(f"⚙️  Voice Analysis: {'Enabled' if analyze_voice else 'Disabled'}")
             print(f"⚙️  Whisper: {config['whisper_model']}")
             print(f"⚙️  Engine: {config['engine']}")
             
@@ -202,6 +206,7 @@ class WaveSeekAPI:
             processing_jobs[job_id]['gpu_enabled'] = use_gpu
             processing_jobs[job_id]['fingerprint_enabled'] = use_fingerprint
             processing_jobs[job_id]['matching_method'] = matching_method
+            processing_jobs[job_id]['voice_analysis_enabled'] = analyze_voice
             
             # Preprocess
             audio, sr = self.audio_processor.preprocess_audio(audio_path)
@@ -216,11 +221,36 @@ class WaveSeekAPI:
                     f"Audio too long: {duration:.1f}s (max {max_duration}s for {tier} tier)"
                 )
             
+            # VOICE ANALYSIS (NEW - Step 1.5)
+            voice_analysis = None
+            if analyze_voice and matching_method != 'fingerprint':
+                processing_jobs[job_id]['status'] = 'voice_analysis'
+                processing_jobs[job_id]['progress'] = 20
+                
+                print("\n🎤 Step 1.5: Voice Analysis")
+                print("-"*60)
+                
+                try:
+                    voice_analysis = self.voice_analyzer.analyze_audio(
+                        str(audio_path),
+                        detailed=True
+                    )
+                    
+                    voice_summary = self.voice_analyzer.generate_summary(voice_analysis)
+                    print(voice_summary)
+                    
+                    processing_jobs[job_id]['voice_analysis'] = convert_to_native_types(voice_analysis)
+                    processing_jobs[job_id]['voice_summary'] = voice_summary
+                    
+                except Exception as e:
+                    print(f"⚠️  Voice analysis failed: {e}")
+                    processing_jobs[job_id]['voice_analysis_error'] = str(e)
+            
             # Transcribe ONLY if NOT using fingerprint-only mode
             transcription = None
             if matching_method != 'fingerprint':
                 processing_jobs[job_id]['status'] = 'transcribing'
-                processing_jobs[job_id]['progress'] = 30
+                processing_jobs[job_id]['progress'] = 40
                 
                 transcriber = self.get_transcriber(config['whisper_model'], use_gpu)
                 transcription = transcriber.transcribe(str(audio_path))
@@ -255,14 +285,15 @@ class WaveSeekAPI:
                 for result in results:
                     formatted_results.append({
                         'filename': result['filename'],
-                        'artist': 'Unknown',  # Fingerprint doesn't store artist
+                        'artist': 'Unknown',
                         'title': result['filename'],
                         'fingerprint_score': result['fingerprint_score'],
                         'final_score': result['fingerprint_score'],
                         'aligned_matches': result['aligned_matches'],
                         'total_matches': result['total_matches'],
                         'time_offset': result['time_offset'],
-                        'match_type': 'fingerprint_only'
+                        'match_type': 'fingerprint_only',
+                        'voice_analysis': voice_analysis  # Add voice analysis
                     })
                 
                 results = formatted_results
@@ -306,6 +337,10 @@ class WaveSeekAPI:
                 matcher = self.get_matcher(config['engine'], config.get('sbert_model'), use_gpu)
                 results = matcher.match_with_details(transcription['text'], top_k=5)
             
+            # Add voice analysis to all results
+            for result in results:
+                result['voice_analysis'] = voice_analysis
+            
             # Convert results
             results_native = convert_to_native_types(results)
             cleaned_results = []
@@ -338,6 +373,7 @@ class WaveSeekAPI:
                 'sbert_model': config.get('sbert_model'),
                 'gpu_enabled': use_gpu,
                 'fingerprint_enabled': use_fingerprint,
+                'voice_analysis_enabled': analyze_voice,
                 'hybrid_methods': hybrid_methods if matching_method == 'hybrid' else [],
                 'device_used': transcription.get('device_used', 'cpu') if transcription else 'cpu'
             }
@@ -716,7 +752,7 @@ def fetch_artist_lyrics():
     """Fetch and add artist's songs to database with automatic index rebuild"""
     data = request.json
     artist_name = data.get('artist_name', '')
-    max_songs = data.get('max_songs', 200)  # Allow customization
+    max_songs = data.get('max_songs', 100)  # Allow customization
     
     if not artist_name:
         return jsonify({'error': 'Artist name required'}), 400
@@ -844,7 +880,56 @@ def fingerprint_status():
             'message': 'Fingerprint database corrupted'
         })
     
+
+@app.route('/api/voice/analyze', methods=['POST'])
+def analyze_voice():
+    """Standalone voice analysis endpoint"""
+    if 'audio' not in request.files:
+        return jsonify({'error': 'No audio file'}), 400
     
+    file = request.files['audio']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    # Save file
+    file_ext = Path(file.filename).suffix.lower()
+    job_id = str(uuid.uuid4())
+    filename = secure_filename(f"{job_id}{file_ext}")
+    filepath = UPLOAD_FOLDER / filename
+    file.save(str(filepath))
+    
+    try:
+        # Analyze
+        results = waveseek_api.voice_analyzer.analyze_audio(
+            str(filepath), 
+            detailed=True
+        )
+        
+        # Generate summary
+        summary = waveseek_api.voice_analyzer.generate_summary(results)
+        
+        # Convert to native types
+        results_native = convert_to_native_types(results)
+        
+        return jsonify({
+            'success': True,
+            'analysis': results_native,
+            'summary': summary,
+            'filename': file.filename
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+    finally:
+        # Cleanup
+        try:
+            os.remove(str(filepath))
+        except:
+            pass
+
+
 # Clean up old jobs periodically
 def cleanup_old_jobs():
     """Remove jobs older than 1 hour"""

@@ -210,6 +210,31 @@ class LyricsDatabase:
         columns = [description[0] for description in self.cursor.description]
         return [dict(zip(columns, row)) for row in self.cursor.fetchall()]
     
+    def create_voice_analysis_table(self):
+        """Create table for caching voice analysis results"""
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS voice_analysis_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                audio_fingerprint TEXT UNIQUE,
+                gender TEXT,
+                gender_confidence REAL,
+                estimated_age INTEGER,
+                age_range_min INTEGER,
+                age_range_max INTEGER,
+                speaker_count INTEGER,
+                mean_f0 REAL,
+                analysis_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        self.cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_audio_fingerprint 
+            ON voice_analysis_cache(audio_fingerprint)
+        ''')
+        
+        self.conn.commit()
+
     def get_database_stats(self):
         """Get database statistics"""
         stats = {}

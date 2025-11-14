@@ -13,6 +13,8 @@ from src.transcriber import Transcriber
 from src.matcher import LyricsMatcher  # TF-IDF
 from src.neural_matcher import NeuralLyricsMatcher  # Neural
 from src.hybrid_matcher import HybridMatcher
+from src.voice_analyzer import VoiceAnalyzer
+
 
 class WaveSeek:
     """Main WaveSeek pipeline with multiple matching engines"""
@@ -49,6 +51,9 @@ class WaveSeek:
         print(f"🔍 Matching engine: {self.matching_engine.upper()}")
         print("\n✅ All components initialized successfully!\n")
     
+        self.voice_analyzer = VoiceAnalyzer() if Config.VOICE_ANALYSIS_ENABLED else None
+
+
     def _init_matcher(self):
         """Initialize the appropriate matching engine"""
         if self.matching_engine == "neural":
@@ -66,8 +71,8 @@ class WaveSeek:
   
 
     def identify_song(self, audio_path, preprocess=True, top_k=None, verbose=True, 
-                    language=None, use_fingerprint=False):
-        """Complete pipeline with optional fingerprinting"""
+                    language=None, use_fingerprint=False, analyze_voice=True):
+        """Complete pipeline with voice analysis and optional fingerprinting"""
         
         audio_path = Path(audio_path)
         
@@ -90,7 +95,27 @@ class WaveSeek:
         else:
             audio, sr = self.audio_processor.load_audio(audio_path)
         
-        # NEW: If fingerprint requested, use fingerprinting
+        # Step 1.5: Voice Analysis (NEW)
+        voice_analysis = None
+        if analyze_voice and self.voice_analyzer and not use_fingerprint:
+            if verbose:
+                print("\n🎤 Step 1.5: Voice Analysis")
+                print("-"*60)
+            
+            try:
+                voice_analysis = self.voice_analyzer.analyze_audio(
+                    str(audio_path), 
+                    detailed=True
+                )
+                
+                if verbose:
+                    print(self.voice_analyzer.generate_summary(voice_analysis))
+            except Exception as e:
+                if verbose:
+                    print(f"⚠️  Voice analysis failed: {e}")
+                voice_analysis = None
+        
+        # Step 2: Fingerprinting OR Transcription
         if use_fingerprint:
             if verbose:
                 print("\n🔊 Step 2: Acoustic Fingerprinting (Lyrics-Free)")
@@ -104,7 +129,7 @@ class WaveSeek:
             if verbose:
                 print(fingerprinter.get_match_summary(results))
             
-            # Convert to standard format
+            # Convert to standard format and add voice analysis
             formatted_results = []
             for result in results:
                 formatted_results.append({
@@ -115,21 +140,22 @@ class WaveSeek:
                     'total_matches': result['total_matches'],
                     'time_offset': result['time_offset'],
                     'match_type': 'fingerprint_only',
-                    'artist': 'Unknown',  # Fingerprint doesn't have artist info
-                    'title': result['filename']
+                    'artist': 'Unknown',
+                    'title': result['filename'],
+                    'voice_analysis': voice_analysis  # Add voice analysis
                 })
             
             fingerprinter.close()
             return formatted_results
         
-        # EXISTING: Lyrics-based matching
+        # LYRICS-BASED MATCHING
         # Step 2: Transcription
         if verbose:
             print("\n🎤 Step 2: Speech-to-Text Transcription")
             if lang is None:
-                print("   🌐 Auto-detecting language...")
+                print("   🌍 Auto-detecting language...")
             else:
-                print(f"   🌐 Using language: {lang}")
+                print(f"   🌍 Using language: {lang}")
             print("-"*60)
         
         transcription = self.transcriber.transcribe(str(audio_path), language=lang)
@@ -144,7 +170,7 @@ class WaveSeek:
                 transcription['language'], 
                 transcription['language']
             )
-            print(f"\n🌐 Detected Language: {lang_name} ({transcription['language']})")
+            print(f"\n🌍 Detected Language: {lang_name} ({transcription['language']})")
             print(f"   Confidence: {transcription.get('language_probability', 0):.2%}")
         
         # Step 3: Lyrics matching
@@ -160,16 +186,17 @@ class WaveSeek:
         if verbose:
             print(self.matcher.get_match_summary(results))
         
-        # Add transcription info
+        # Add transcription info and voice analysis to all results
         for result in results:
             result['transcription'] = transcription['text']
             result['transcription_language'] = transcription['language']
             result['language_confidence'] = transcription.get('language_probability', 0)
             result['matching_engine'] = self.matching_engine
+            result['voice_analysis'] = voice_analysis  # Add voice analysis
         
         return results
-    
-    
+
+
     def batch_identify(self, audio_dir, output_file=None, language=None, use_fingerprint=False):
         """
         Process multiple audio files
