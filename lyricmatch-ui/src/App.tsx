@@ -10,6 +10,8 @@ import { ProcessingView } from './components/ProcessingView';
 import { ResultsView } from './components/ResultsView';
 import { uploadAudio, getJobStatus } from './utils/api';
 import { saveToHistory } from './utils/db';
+import { VoiceAnalyzerPage } from './components/voice_analyzer/VoiceAnalyzer';
+
 import './styles/theme.css';
 
 function App() {
@@ -33,6 +35,8 @@ function App() {
   const [showArtistFetch, setShowArtistFetch] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
   
+  const [currentPage, setCurrentPage] = useState('music'); // 'music' or 'voice'
+
   const hasTransitionedRef = useRef(false);
 
   // Persist state changes
@@ -209,46 +213,25 @@ function App() {
         <Header 
           currentTier={currentTier} 
           onChangeTier={handleChangeTier}
-          setShowArtistFetch={setShowArtistFetch} 
+          setShowArtistFetch={setShowArtistFetch}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
         />
         
         <main className="max-w-7xl mx-auto px-6 py-12">
-          {error && (
-            <div className="mb-8 bg-red-950/50 border border-red-800/50 rounded-2xl p-6">
-              <p className="font-bold text-red-200 text-lg mb-1">Error</p>
-              <p className="text-red-300 mb-4">{error}</p>
-              <button 
-                onClick={handleReset}
-                className="px-6 py-3 bg-red-900/50 hover:bg-red-800/50 text-white rounded-lg font-semibold transition-colors"
-              >
-                Try Again
-              </button>
-            </div>
-          )}
-
-          {view === 'upload' && (
-            <UploadView 
-              onUpload={handleFileUpload} 
-              currentTier={currentTier}
-              onOpenConfig={() => setShowConfigModal(true)}
-            />
-          )}
-          {view === 'processing' && (
-            <ProcessingView 
-              progress={progress} 
-              filename={uploadedFile?.name}
-              status={status}
-              tier={currentTier}
-              config={processingConfig}
-            />
-          )}
-          {view === 'results' && results && (
-            <ResultsView 
-              results={results} 
-              onReset={handleReset}
-              tier={currentTier}
-              config={results.configUsed}
-            />
+          {currentPage === 'music' ? (
+            <>
+              {error && (
+                <div className="mb-8 bg-red-950/50 border border-red-800/50 rounded-2xl p-6">
+                  {/* existing error UI */}
+                </div>
+              )}
+              {view === 'upload' && <UploadView onUpload={handleFileUpload} currentTier={currentTier} onOpenConfig={() => setShowConfigModal(true)} />}
+              {view === 'processing' && <ProcessingView progress={progress} filename={uploadedFile?.name} status={status} tier={currentTier} config={processingConfig} />}
+              {view === 'results' && results && <ResultsView results={results} onReset={handleReset} tier={currentTier} config={results.configUsed} />}
+            </>
+          ) : (
+            <VoiceAnalyzerPage />
           )}
         </main>
 

@@ -9,6 +9,7 @@ import numpy as np
 import warnings
 from pathlib import Path
 import torch
+import torchaudio
 
 warnings.filterwarnings('ignore')
 
@@ -40,16 +41,57 @@ class VoiceAnalyzer:
         
         print("✅ Voice Analyzer ready")
     
+
+
     def _init_models(self):
         """Initialize pre-trained models"""
-        # Skip Silero VAD - use librosa instead
         self.vad_model = None
-        print("   ℹ️  Using librosa-based VAD (Windows compatible)")
         
-        # Skip Pyannote for now - has dependency issues
-        self.diarization_pipeline = None
-        print("   ℹ️  Pyannote diarization disabled (optional feature)")
-    
+        # Initialize Pyannote diarization pipeline
+        try:
+            from pyannote.audio import Pipeline
+            import os
+            
+            # Get token from environment or config
+            hf_token = os.getenv('HUGGINGFACE_TOKEN')
+            
+            # DEBUG: Check if token exists
+            if not hf_token:
+                print("   ❌ HUGGINGFACE_TOKEN not found in environment!")
+                print("   💡 Add to .env file: HUGGINGFACE_TOKEN=hf_xxxxx")
+                self.diarization_pipeline = None
+                return
+            
+            print(f"   ✅ Found HF token: {hf_token[:10]}...")
+            
+            # Load pipeline
+            print("   📥 Loading Pyannote diarization pipeline...")
+            self.diarization_pipeline = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1",
+                token=hf_token
+            )
+            
+            # Move to GPU if available
+            if self.device.type == 'cuda':
+                self.diarization_pipeline.to(self.device)
+                print("   ✅ Pyannote loaded on GPU")
+            else:
+                print("   ✅ Pyannote loaded on CPU")
+                
+        except ImportError as e:
+            print(f"   ❌ Import error: {e}")
+            print("      Run: pip install pyannote.audio")
+            self.diarization_pipeline = None
+        except Exception as e:
+            print(f"   ❌ Could not load Pyannote: {e}")
+            print(f"      Error details: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            self.diarization_pipeline = None
+
+
+
+
     def analyze_audio(self, audio_path, detailed=True):
         """Complete voice analysis"""
         print(f"\n🎤 Analyzing voice: {Path(audio_path).name}")
@@ -87,10 +129,11 @@ class VoiceAnalyzer:
         
         print(f"   ⏱️  Speech duration: {len(voiced_audio)/sr:.1f}s")
         
-        # Speaker diarization
+        # Speaker diarization - ALWAYS try Pyannote first
         if self.diarization_pipeline:
-            speaker_info = self._diarize_speakers(audio_path)
+            speaker_info = self._diarize_speakers(str(audio_path))
         else:
+            print("   ⚠️  Falling back to basic speaker estimation (install pyannote.audio for accuracy)")
             speaker_info = self._estimate_speakers_fallback(voiced_audio, sr, music_score)
         
         # Gender and pitch analysis
@@ -116,6 +159,8 @@ class VoiceAnalyzer:
         
         return results
     
+
+
     def _detect_music_improved(self, y, sr):
         """Improved music detection"""
         # Tempo detection
@@ -219,32 +264,254 @@ class VoiceAnalyzer:
             return np.concatenate(audio_segments)
         return np.array([])
     
-    def _diarize_speakers(self, audio_path):
-        """Use Pyannote for speaker diarization"""
-        try:
-            diarization = self.diarization_pipeline(audio_path)
+
+
+    def _classify_gender_from_pitch(self, mean_f0, f0_iqr, sample_count, audio, sr):
+        """
+        ENHANCED: Better gender classification especially for overlap zones
+        """
+        scores = {
+            'male': 0.0,
+            'female': 0.0
+        }
+        
+        # IMPROVED: Better scoring ranges
+        # Male: 85-180 Hz (peak ~120 Hz, wider standard deviation)
+        if 85 <= mean_f0 <= 180:
+            scores['male'] = np.exp(-((mean_f0 - 120)**2) / (2 * 30**2))  # Wider: 25->30
+        
+        # Female: 165-280 Hz (peak ~210 Hz)
+        if 165 <= mean_f0 <= 280:
+            scores['female'] = np.exp(-((mean_f0 - 210)**2) / (2 * 35**2))  # Peak: 200->210
+        
+        # CRITICAL FIX: Overlap zone 155-180 Hz - use spectral features
+        if 145 <= mean_f0 <= 180:  # Extended lower bound: 155->145
+            spec_cent = np.mean(librosa.feature.spectral_centroid(y=audio, sr=sr))
+            spectral_rolloff = np.mean(librosa.feature.spectral_rolloff(y=audio, sr=sr))
             
-            speakers = set()
+            # IMPROVED: More aggressive spectral differentiation
+            # Male voices: darker timbre, lower spectral centroid
+            # Female voices: brighter timbre, higher spectral centroid
+            
+            if spec_cent < 1800 or spectral_rolloff < 3000:
+                # Darker voice = likely male
+                scores['male'] *= 2.0  # Was 1.5
+                scores['female'] *= 0.3  # Was 0.7
+                print(f"      🔍 Overlap zone bias: MALE (spec_cent={spec_cent:.0f}, rolloff={spectral_rolloff:.0f})")
+            elif spec_cent > 2200 or spectral_rolloff > 3500:
+                # Brighter voice = likely female
+                scores['female'] *= 1.8
+                scores['male'] *= 0.4  # Was 0.6
+                print(f"      🔍 Overlap zone bias: FEMALE (spec_cent={spec_cent:.0f}, rolloff={spectral_rolloff:.0f})")
+            else:
+                # Neutral - slight male bias for 145-165Hz range
+                if mean_f0 < 165:
+                    scores['male'] *= 1.3
+                    scores['female'] *= 0.7
+                    print(f"      🔍 Overlap zone: Slight male bias ({mean_f0:.1f} Hz)")
+        
+        # Normalize scores
+        total = sum(scores.values())
+        if total > 0:
+            scores = {k: v/total for k, v in scores.items()}
+        else:
+            return {
+                'classification': 'unknown',
+                'confidence': 0.0,
+                'mean_f0': float(mean_f0),
+                'reason': 'pitch_outside_expected_ranges'
+            }
+        
+        predicted = max(scores, key=scores.get)
+        confidence = scores[predicted]
+        
+        # Adjust confidence based on sample quality
+        sample_factor = min(1.0, sample_count / 30)
+        variance_factor = max(0.7, min(1.0, 1.0 - f0_iqr / 100))
+        
+        confidence = confidence * sample_factor * variance_factor
+        
+        # IMPROVED: Even lower threshold for difficult cases
+        if confidence < 0.25 or sample_count < 15:  # Was 0.30 and 20
+            predicted = 'unknown'
+            confidence = 0.0
+            reason = f'low_confidence (samples={sample_count}, conf={confidence:.2f})'
+        else:
+            reason = 'classified'
+        
+        return {
+            'classification': predicted,
+            'confidence': float(confidence),
+            'scores': {k: float(v) for k, v in scores.items()},
+            'mean_f0': float(mean_f0),
+            'f0_iqr': float(f0_iqr),
+            'sample_count': sample_count,
+            'reason': reason
+        }
+
+
+    def _diarize_speakers(self, audio_path):
+        """
+        Use Pyannote for speaker diarization - ENHANCED for better accuracy
+        """
+        try:
+            # Load audio
+            waveform, sample_rate = torchaudio.load(audio_path)
+            y = waveform.numpy()[0]
+            
+            print(f"   🎤 Running Pyannote diarization (can detect 10+ speakers)...")
+            audio_input = {"waveform": waveform, "sample_rate": sample_rate}
+            
+            # IMPROVED: More sensitive parameters for better speaker separation
+            diarization_output = self.diarization_pipeline(
+                audio_input,
+                min_speakers=1,      # No minimum
+                max_speakers=None,   # No maximum - let it detect naturally
+                # These are tunable parameters (if using pyannote 3.1+)
+            )
+            
+            # Get Annotation object
+            try:
+                diarization = diarization_output.speaker_diarization
+            except AttributeError:
+                diarization = diarization_output
+            
+            # Collect speaker segments
+            speakers = {}
+            overlaps = []
+            
             for turn, _, speaker in diarization.itertracks(yield_label=True):
-                speakers.add(speaker)
+                if speaker not in speakers:
+                    speakers[speaker] = {
+                        'segments': [],
+                        'total_duration': 0
+                    }
+                
+                start_sample = int(turn.start * sample_rate)
+                end_sample = int(turn.end * sample_rate)
+                duration = turn.end - turn.start
+                
+                speakers[speaker]['segments'].append({
+                    'start': turn.start,
+                    'end': turn.end,
+                    'start_sample': start_sample,
+                    'end_sample': end_sample,
+                    'duration': duration
+                })
+                speakers[speaker]['total_duration'] += duration
+            
+            # Detect overlaps
+            try:
+                overlap_timeline = diarization.get_overlap()
+                for overlap_segment in overlap_timeline:
+                    overlaps.append({
+                        'start': overlap_segment.start,
+                        'end': overlap_segment.end,
+                        'duration': overlap_segment.end - overlap_segment.start
+                    })
+            except:
+                pass
             
             num_speakers = len(speakers)
+            print(f"   ✅ Detected {num_speakers} unique speaker(s)")
+            if overlaps:
+                print(f"   📊 Found {len(overlaps)} overlapping speech segments")
+            
+            # ENHANCED: Analyze gender for EACH speaker with better handling
+            print(f"\n   🔍 Analyzing gender per speaker...")
+            speaker_analyses = {}
+            
+            for speaker_id, speaker_data in speakers.items():
+                # Extract all audio segments for this speaker
+                speaker_audio_segments = []
+                total_samples = 0
+                
+                for segment in speaker_data['segments']:
+                    start = segment['start_sample']
+                    end = segment['end_sample']
+                    if end > len(y):
+                        end = len(y)
+                    if start < end:
+                        segment_audio = y[start:end]
+                        speaker_audio_segments.append(segment_audio)
+                        total_samples += len(segment_audio)
+                
+                # Concatenate all segments
+                if speaker_audio_segments:
+                    speaker_audio = np.concatenate(speaker_audio_segments)
+                    
+                    # IMPROVED: Lower threshold - analyze if at least 0.3s
+                    if len(speaker_audio) > sample_rate * 0.3:
+                        print(f"      🎤 Analyzing {speaker_id} ({speaker_data['total_duration']:.1f}s, {total_samples} samples)...")
+                        gender_analysis = self._analyze_gender_pyin(speaker_audio, sample_rate)
+                        speaker_analyses[speaker_id] = {
+                            'gender': gender_analysis,
+                            'duration': float(speaker_data['total_duration']),
+                            'segments_count': len(speaker_data['segments']),
+                            'total_samples': total_samples
+                        }
+                    else:
+                        print(f"      ⚠️  {speaker_id} too short ({len(speaker_audio)/sample_rate:.2f}s)")
+                        speaker_analyses[speaker_id] = {
+                            'gender': {
+                                'classification': 'unknown',
+                                'confidence': 0.0,
+                                'reason': 'insufficient_audio',
+                                'mean_f0': 0.0
+                            },
+                            'duration': float(speaker_data['total_duration']),
+                            'segments_count': len(speaker_data['segments']),
+                            'total_samples': total_samples
+                        }
+            
+            # Find dominant speaker
+            dominant_speaker = max(speakers.keys(), 
+                                key=lambda s: speakers[s]['total_duration']) if speakers else None
+            
+            # Create detailed summary
+            gender_summary = []
+            gender_counts = {'male': 0, 'female': 0, 'unknown': 0}
+            
+            for speaker_id, analysis in speaker_analyses.items():
+                gender_label = analysis['gender']['classification']
+                confidence = analysis['gender'].get('confidence', 0)
+                duration = analysis['duration']
+                
+                if gender_label != 'unknown':
+                    gender_summary.append(f"{speaker_id}: {gender_label} ({confidence:.0%})")
+                    gender_counts[gender_label] += 1
+                else:
+                    gender_summary.append(f"{speaker_id}: unknown")
+                    gender_counts['unknown'] += 1
+            
+            print(f"   📋 Gender summary: {', '.join(gender_summary)}")
+            print(f"   📊 Totals: {gender_counts['male']}M + {gender_counts['female']}F + {gender_counts['unknown']}?")
             
             return {
                 'estimated_count': num_speakers,
                 'confidence': 'high',
-                'method': 'pyannote_diarization',
-                'speakers': list(speakers)
+                'method': 'pyannote_diarization_v3.1_per_speaker',
+                'speakers': list(speakers.keys()),
+                'speaker_analyses': speaker_analyses,
+                'dominant_speaker': dominant_speaker,
+                'overlapping_segments': len(overlaps),
+                'total_overlap_duration': sum(o['duration'] for o in overlaps),
+                'gender_summary': ', '.join(gender_summary),
+                'gender_counts': gender_counts  # NEW: Total counts
             }
             
         except Exception as e:
-            print(f"   ⚠️  Diarization error: {e}")
+            print(f"   ❌ Diarization error: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 'estimated_count': 1,
                 'confidence': 'low',
-                'method': 'failed'
+                'method': 'failed',
+                'error': str(e)
             }
-    
+
+
     def _estimate_speakers_fallback(self, y, sr, music_score):
         """Fallback speaker estimation"""
         if music_score > 0.6:
@@ -473,72 +740,8 @@ class VoiceAnalyzer:
         result['method'] = 'yin_median_filtered'
         return result
     
-    def _classify_gender_from_pitch(self, mean_f0, f0_iqr, sample_count, audio, sr):
-        """
-        Classify gender from pitch with additional audio features
-        """
-        scores = {
-            'male': 0.0,
-            'female': 0.0
-        }
-        
-        # Male: 85-165 Hz (peak ~120 Hz)
-        if 85 <= mean_f0 <= 165:
-            # Gaussian scoring
-            scores['male'] = np.exp(-((mean_f0 - 120)**2) / (2 * 25**2))
-        
-        # Female: 155-280 Hz (peak ~200 Hz)
-        if 155 <= mean_f0 <= 280:
-            scores['female'] = np.exp(-((mean_f0 - 200)**2) / (2 * 35**2))
-        
-        # Overlap zone: 155-165 Hz - use spectral features
-        if 155 <= mean_f0 <= 165:
-            spec_cent = np.mean(librosa.feature.spectral_centroid(y=audio, sr=sr))
-            spectral_rolloff = np.mean(librosa.feature.spectral_rolloff(y=audio, sr=sr))
-            
-            # Female voices have higher spectral content
-            if spec_cent > 2200 or spectral_rolloff > 3500:
-                scores['female'] *= 1.8
-                scores['male'] *= 0.6
-            else:
-                scores['male'] *= 1.5
-                scores['female'] *= 0.7
-        
-        # Normalize
-        total = sum(scores.values())
-        if total > 0:
-            scores = {k: v/total for k, v in scores.items()}
-        else:
-            return {
-                'classification': 'unknown',
-                'confidence': 0.0,
-                'mean_f0': float(mean_f0),
-                'reason': 'pitch_outside_expected_ranges'
-            }
-        
-        predicted = max(scores, key=scores.get)
-        confidence = scores[predicted]
-        
-        # Adjust for sample count and pitch variance
-        sample_factor = min(1.0, sample_count / 50)
-        variance_factor = max(0.7, min(1.0, 1.0 - f0_iqr / 100))  # High variance = less confident
-        
-        confidence = confidence * sample_factor * variance_factor
-        
-        # Minimum confidence
-        if confidence < 0.40:
-            predicted = 'unknown'
-            confidence = 0.0
-        
-        return {
-            'classification': predicted,
-            'confidence': float(confidence),
-            'scores': {k: float(v) for k, v in scores.items()},
-            'mean_f0': float(mean_f0),
-            'f0_iqr': float(f0_iqr),
-            'sample_count': sample_count
-        }
-    
+
+
     def _analyze_gender_yin_fallback(self, y, sr):
         """
         Pass 3: YIN fallback - most robust but less accurate
@@ -758,8 +961,149 @@ class VoiceAnalyzer:
             'assessment': 'excellent' if quality_score > 0.8 else 'good' if quality_score > 0.6 else 'fair' if quality_score > 0.4 else 'poor'
         }
     
+
+
+    def analyze_audio(self, audio_path, detailed=True):
+        """Complete voice analysis with per-speaker gender detection"""
+        print(f"\n🎤 Analyzing voice: {Path(audio_path).name}")
+        
+        # Load audio with librosa
+        y, sr = librosa.load(audio_path, sr=self.sample_rate, mono=True)
+        
+        # Detect music vs speech
+        music_score = self._detect_music_improved(y, sr)
+        
+        if music_score > 0.6:
+            print(f"   🎵 Music detected ({music_score:.0%})")
+        
+        # Voice Activity Detection (librosa-based)
+        speech_segments = self._detect_speech_librosa(y, sr)
+        
+        if not speech_segments or len(speech_segments) == 0:
+            return {
+                'error': 'No speech detected',
+                'music_score': float(music_score),
+                'reason': 'No voice activity detected in audio'
+            }
+        
+        print(f"   📊 Found {len(speech_segments)} speech segments")
+        
+        # Extract voiced audio
+        voiced_audio = self._extract_segments(y, sr, speech_segments)
+        
+        if len(voiced_audio) < sr * 0.1:
+            return {
+                'error': 'Insufficient speech content',
+                'music_score': float(music_score),
+                'reason': 'Speech segments too short'
+            }
+        
+        print(f"   ⏱️  Speech duration: {len(voiced_audio)/sr:.1f}s")
+        
+        # Speaker diarization with PER-SPEAKER gender analysis
+        if self.diarization_pipeline:
+            speaker_info = self._diarize_speakers(str(audio_path))
+        else:
+            print("   ⚠️  Falling back to basic speaker estimation (install pyannote.audio for accuracy)")
+            speaker_info = self._estimate_speakers_fallback(voiced_audio, sr, music_score)
+            # Also do overall gender analysis
+            gender_info = self._analyze_gender_pyin(voiced_audio, sr)
+            speaker_info['overall_gender'] = gender_info
+        
+        # Build multi-speaker gender summary for UI
+        if 'speaker_analyses' in speaker_info and len(speaker_info['speaker_analyses']) > 1:
+            # Multiple speakers - create combined summary
+            genders = []
+            total_confidence = 0
+            valid_speakers = 0
+            
+            for speaker_id, analysis in speaker_info['speaker_analyses'].items():
+                gender_label = analysis['gender']['classification']
+                confidence = analysis['gender'].get('confidence', 0)
+                
+                if gender_label != 'unknown':
+                    genders.append(gender_label)
+                    total_confidence += confidence
+                    valid_speakers += 1
+            
+            if valid_speakers > 0:
+                # Create combined gender classification
+                avg_confidence = total_confidence / valid_speakers
+                
+                # Count gender types
+                gender_counts = {}
+                for g in genders:
+                    gender_counts[g] = gender_counts.get(g, 0) + 1
+                
+                # Create label like "1 Male + 1 Female" or "2 Females"
+                gender_parts = []
+                for gender, count in sorted(gender_counts.items()):
+                    if count == 1:
+                        gender_parts.append(f"1 {gender.title()}")
+                    else:
+                        gender_parts.append(f"{count} {gender.title()}s")
+                
+                combined_label = " + ".join(gender_parts)
+                
+                gender_info = {
+                    'classification': combined_label,
+                    'confidence': float(avg_confidence),
+                    'multi_speaker': True,
+                    'speaker_breakdown': speaker_info['speaker_analyses']
+                }
+            else:
+                # All speakers unknown
+                gender_info = {
+                    'classification': 'unknown',
+                    'confidence': 0.0,
+                    'multi_speaker': True,
+                    'reason': 'Could not determine gender for any speaker'
+                }
+        elif 'speaker_analyses' in speaker_info and speaker_info.get('dominant_speaker'):
+            # Single speaker or use dominant
+            dominant_speaker = speaker_info['dominant_speaker']
+            gender_info = speaker_info['speaker_analyses'][dominant_speaker]['gender']
+            gender_info['multi_speaker'] = False
+        else:
+            # Fallback: analyze all audio
+            gender_info = self._analyze_gender_pyin(voiced_audio, sr)
+            gender_info['multi_speaker'] = False
+        
+        # Age estimation (use first known speaker)
+        age_speaker_audio = voiced_audio
+        if 'speaker_analyses' in speaker_info:
+            for speaker_id, analysis in speaker_info['speaker_analyses'].items():
+                if analysis['gender']['classification'] != 'unknown':
+                    # Use this speaker's gender for age estimation
+                    age_info = self._estimate_age_realistic(analysis['gender'], voiced_audio, sr)
+                    break
+            else:
+                # No valid speakers, use overall
+                age_info = self._estimate_age_realistic(gender_info, voiced_audio, sr)
+        else:
+            age_info = self._estimate_age_realistic(gender_info, voiced_audio, sr)
+        
+        results = {
+            'gender': gender_info,  # Overall/dominant speaker gender (backwards compat)
+            'speaker_count': speaker_info,
+            'age': age_info,
+            'audio_duration': len(y) / sr,
+            'music_score': float(music_score),
+            'speech_segments': len(speech_segments),
+            'total_speech_duration': float(len(voiced_audio) / sr),
+            'analysis_method': 'librosa_vad_per_speaker'
+        }
+        
+        if detailed:
+            results['acoustic_features'] = self._extract_acoustic_features(voiced_audio, sr)
+            results['voice_quality'] = self._assess_voice_quality(voiced_audio, sr)
+        
+        return results
+
+
+
     def generate_summary(self, analysis_results):
-        """Generate human-readable summary"""
+        """Generate human-readable summary with per-speaker gender"""
         if 'error' in analysis_results:
             return f"❌ {analysis_results['error']}"
         
@@ -770,7 +1114,7 @@ class VoiceAnalyzer:
         if music_score > 0.6:
             summary.append(f"🎵 Music detected ({music_score:.0%})")
         
-        # Speakers
+        # Speakers with per-speaker gender
         speakers = analysis_results.get('speaker_count', {})
         count = speakers.get('estimated_count', 1)
         conf = speakers.get('confidence', 'unknown')
@@ -780,19 +1124,35 @@ class VoiceAnalyzer:
         else:
             summary.append(f"🎤 {count} speakers ({conf} confidence)")
         
-        # Gender
-        gender = analysis_results.get('gender', {})
-        gender_label = gender.get('classification', 'unknown').title()
-        gender_conf = gender.get('confidence', 0)
-        mean_f0 = gender.get('mean_f0', 0)
-        
-        if gender_label == 'Unknown':
-            summary.append(f"👤 Gender: Unable to determine")
+        # Per-speaker gender breakdown
+        if 'speaker_analyses' in speakers:
+            summary.append(f"\n   Per-Speaker Analysis:")
+            for speaker_id, analysis in speakers['speaker_analyses'].items():
+                gender_data = analysis['gender']
+                gender_label = gender_data.get('classification', 'unknown').title()
+                gender_conf = gender_data.get('confidence', 0)
+                mean_f0 = gender_data.get('mean_f0', 0)
+                duration = analysis.get('duration', 0)
+                
+                if gender_label == 'Unknown':
+                    summary.append(f"   • {speaker_id} ({duration:.1f}s): Gender unknown")
+                else:
+                    summary.append(f"   • {speaker_id} ({duration:.1f}s): {gender_label} ({gender_conf:.0%})")
+                    summary.append(f"     Pitch: {mean_f0:.0f} Hz")
         else:
-            summary.append(f"👤 Gender: {gender_label} ({gender_conf:.0%} confidence)")
-            summary.append(f"   🎵 Average pitch: {mean_f0:.0f} Hz")
+            # Fallback: overall gender
+            gender = analysis_results.get('gender', {})
+            gender_label = gender.get('classification', 'unknown').title()
+            gender_conf = gender.get('confidence', 0)
+            mean_f0 = gender.get('mean_f0', 0)
+            
+            if gender_label == 'Unknown':
+                summary.append(f"👤 Gender: Unable to determine")
+            else:
+                summary.append(f"👤 Gender: {gender_label} ({gender_conf:.0%} confidence)")
+                summary.append(f"   🎵 Average pitch: {mean_f0:.0f} Hz")
         
-        # Age
+        # Age (based on dominant speaker)
         age = analysis_results.get('age', {})
         est_age = age.get('estimated_age')
         age_range = age.get('age_range', 'unknown')
@@ -814,6 +1174,7 @@ class VoiceAnalyzer:
             summary.append(f"✨ Quality: {quality['assessment'].title()}")
         
         return "\n".join(summary)
+
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ import math
 import json
 
 from dotenv import load_dotenv
+load_dotenv()
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 

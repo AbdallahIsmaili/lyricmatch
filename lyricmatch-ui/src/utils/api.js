@@ -139,3 +139,19 @@ export const fetchArtistSongs = async (artistName) => {
   return data;
 };
 
+export const analyzeVoice = async (file) => {
+  const formData = new FormData();
+  formData.append('audio', file);
+  
+  const response = await fetch(`${API_BASE_URL}/voice/analyze`, {
+    method: 'POST',
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Voice analysis failed');
+  }
+  
+  return response.json();
+};

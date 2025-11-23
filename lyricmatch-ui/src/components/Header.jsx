@@ -4,8 +4,9 @@ import { Music, History, Sun, Moon, Plus } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { TierBadge } from './TierBadge';
 import { HistoryModal } from './HistoryModal';
+import { Mic } from 'lucide-react';
 
-export const Header = ({ currentTier, onChangeTier, setShowArtistFetch }) => {
+export const Header = ({ currentTier, onChangeTier, setShowArtistFetch, currentPage, setCurrentPage }) => {
   const [showHistory, setShowHistory] = useState(false);
   const { theme, toggleTheme } = useTheme();
 
@@ -20,6 +21,33 @@ export const Header = ({ currentTier, onChangeTier, setShowArtistFetch }) => {
             <div>
               <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">WaveSeek</h1>
               <div className="h-0.5 w-full bg-gradient-to-r from-[var(--accent)] to-transparent" />
+            </div>
+
+
+          {/* NEW: Navigation */}
+            <div className="ml-8 flex gap-2 bg-[var(--bg-secondary)] p-1 rounded-lg border border-[var(--border)]">
+              <button
+                onClick={() => setCurrentPage('music')}
+                className={`px-4 py-2 rounded-md font-semibold text-sm transition-colors flex items-center gap-2 ${
+                  currentPage === 'music'
+                    ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <Music className="w-4 h-4" />
+                Music Matcher
+              </button>
+              <button
+                onClick={() => setCurrentPage('voice')}
+                className={`px-4 py-2 rounded-md font-semibold text-sm transition-colors flex items-center gap-2 ${
+                  currentPage === 'voice'
+                    ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <Mic className="w-4 h-4" />
+                Voice Analyzer
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-4">
